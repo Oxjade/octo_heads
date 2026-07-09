@@ -10,9 +10,12 @@ function toAbsoluteUrl(url: string) {
 
 const appUrl = toAbsoluteUrl(
   process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    // Vercel sets different env vars depending on whether you're on a custom domain
     process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() ||
+    process.env.NEXT_PUBLIC_DEPLOY_URL?.trim() ||
     process.env.VERCEL_URL?.trim() ||
-    "useink.xyz",
+    // sensible fallback for this deployment
+    "octo.useink.xyz",
 );
 
 export const metadata: Metadata = {
@@ -42,6 +45,11 @@ export const metadata: Metadata = {
     ],
     type: "website",
   },
+  // Important for link previews on custom domains:
+  // - metadataBase must be the real deployed origin
+  // - og:image must be reachable from that origin
+  // - og:url must be a fully-qualified URL in practice; `metadataBase` usually covers that
+
   twitter: {
     card: "summary_large_image",
     title: "Ink CrossMint",
@@ -65,7 +73,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                   </span>
                 </Link>
                 <a
-                  href="https://useink.xyz"
+                  href="https://octo.useink.xyz"
                   className="inline-flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-sm font-semibold text-ink transition hover:border-primary/70"
                 >
                   <Cpu size={16} />
@@ -78,7 +86,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               <div className="mx-auto flex max-w-[1180px] flex-col gap-3 px-4 py-8 text-sm text-muted md:flex-row md:items-center md:justify-between">
                 <p>Paid on Sui. NFT lives on Monad. Coordinated by Ink + Ika.</p>
                 <div className="flex items-center gap-3">
-                  <a href="https://useink.xyz" className="hover:text-ink">useink.xyz</a>
+                  <a href="https://octo.useink.xyz" className="hover:text-ink">octo.useink.xyz</a>
                 </div>
               </div>
             </footer>

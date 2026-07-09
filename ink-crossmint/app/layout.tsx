@@ -1,12 +1,41 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Cpu, ShieldCheck } from "lucide-react";
+import { Cpu } from "lucide-react";
 import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "https://useink.xyz"),
   title: "Ink CrossMint",
   description: "Pay with Sui. NFT lives on Monad. Coordinated by Ink + Ika.",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/ink-octo.svg", type: "image/svg+xml" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
+  },
+  openGraph: {
+    title: "Ink CrossMint",
+    description: "Pay on Sui. Mint on Monad.",
+    url: "/",
+    siteName: "Ink CrossMint",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Ink CrossMint",
+      },
+    ],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Ink CrossMint",
+    description: "Pay on Sui. Mint on Monad.",
+    images: ["/og-image.png"],
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -18,9 +47,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <header className="sticky top-0 z-30 border-b border-line bg-bg/90 backdrop-blur">
               <div className="mx-auto flex max-w-[1180px] items-center justify-between gap-4 px-4 py-3">
                 <Link href="/" className="flex items-center gap-3">
-                  <span className="grid size-9 place-items-center rounded-lg border border-primary/50 bg-primary/15 text-primary">
-                    <ShieldCheck size={18} />
-                  </span>
                   <span>
                     <span className="block text-sm font-semibold text-ink">Ink CrossMint</span>
                     <span className="block text-xs text-muted">Sui payment · Monad NFT</span>

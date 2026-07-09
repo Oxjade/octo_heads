@@ -1,0 +1,48 @@
+{
+  "name": "ink-crossmint",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "cli": "node scripts/ink-cli.mjs",
+    "ink:dwallet": "node scripts/ink-cli.mjs create --env-file .env.local --network testnet --write-env --json",
+    "move:build": "sui move build --path contracts/sui",
+    "sui:graphql": "node scripts/test-sui-graphql.mjs",
+    "deploy:monad": "node scripts/deploy-monad.mjs",
+    "monad:set-minter": "node scripts/set-monad-minter.mjs",
+    "test:monad": "node scripts/test-monad.mjs",
+    "test:dwallet": "node scripts/test-dwallet-monad.mjs",
+    "test:monad:mintpass": "node scripts/test-monad-mintpass.mjs"
+  },
+  "dependencies": {
+    "@ika.xyz/sdk": "^0.4.1",
+    "@ink-sdk/evm": "^0.2.1",
+    "@ink-sdk/sdk": "^0.2.1",
+    "@mysten/dapp-kit": "^0.17.6",
+    "@mysten/sui": "1.37.6",
+    "@tanstack/react-query": "^5.85.5",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.23.12",
+    "lucide-react": "^0.468.0",
+    "next": "^15.5.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tailwind-merge": "^2.6.0",
+    "viem": "^2.34.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.17.0",
+    "@types/react": "^19.1.10",
+    "@types/react-dom": "^19.1.7",
+    "autoprefixer": "^10.4.21",
+    "eslint": "^9.33.0",
+    "eslint-config-next": "^15.5.0",
+    "postcss": "^8.5.6",
+    "solc": "^0.8.35",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.9.2"
+  }
+}

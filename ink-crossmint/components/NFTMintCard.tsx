@@ -3,17 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from "@mysten/dapp-kit";
 import { isAddress, keccak256, stringToBytes } from "viem";
-import { BadgeCheck, Coins, Copy, ExternalLink, Fingerprint, KeyRound, Send, UserRound } from "lucide-react";
+import { BadgeCheck, Coins, ExternalLink, Fingerprint, Send, UserRound } from "lucide-react";
 import { collectionConfig } from "@/config/collection";
 import { monadConfig } from "@/config/chains";
 import { ikaRuntimeConfig, requireIkaMintSigner } from "@/config/ika";
 import { createInkAdapter } from "@/lib/ink/InkAdapter";
-import type { DWallet } from "@/lib/ink/types";
 import type { StoredMint } from "@/lib/storage/localStore";
 import { loadInkUsername, loadTelegramJoined, saveInkUsername, saveStoredMint, saveTelegramJoined } from "@/lib/storage/localStore";
 import { buildInkPassMetadata } from "@/lib/metadata/buildMetadata";
 import { uploadMetadata } from "@/lib/metadata/uploadMetadata";
-import { buildIkaDWalletDkgTransaction, buildIkaMonadMintPassSignTransaction, buildIkaPresignTransaction, submitCompletedIkaMintPassSignature } from "@/lib/ika/mpc";
+import { buildIkaMonadMintPassSignTransaction, buildIkaPresignTransaction, submitCompletedIkaMintPassSignature } from "@/lib/ika/mpc";
 import { getMonadAddressHash } from "@/lib/monad/proof";
 import { Button, Panel, Stat, buttonClassName } from "./ui";
 import { MintSuccessModal } from "./MintSuccessModal";
@@ -63,8 +62,6 @@ export function NFTMintCard() {
   const [savedInkUsername, setSavedInkUsername] = useState("");
   const [telegramJoined, setTelegramJoined] = useState(false);
   const [monadAddress, setMonadAddress] = useState("");
-  const [dwallet, setDWallet] = useState<DWallet | undefined>();
-  const [privateKeyCopied, setPrivateKeyCopied] = useState(false);
   const [lastMint, setLastMint] = useState<StoredMint | undefined>();
   const [error, setError] = useState<string | undefined>();
 
@@ -108,47 +105,6 @@ export function NFTMintCard() {
     window.open(INK_TELEGRAM_URL, "_blank", "noopener,noreferrer");
   }
 
-  async function createDWallet() {
-    setError(undefined);
-
-    if (!account?.address) {
-      setError("Connect a Sui wallet before creating an Ika dWallet.");
-      return;
-    }
-
-    try {
-      const dkg = await buildIkaDWalletDkgTransaction({
-        suiClient,
-        senderAddress: account.address,
-      });
-      const result = await signAndExecuteTransaction({ transaction: dkg.transaction });
-      const dWalletCapId = findCreatedObjectId(result, "DWalletCap");
-      const generated: DWallet = {
-        id: findCreatedObjectId(result, "DWallet") ?? dkg.sessionIdentifier,
-        dWalletCapId,
-        createdAt: Date.now(),
-        network: "monad",
-        custody: "ika-mpc",
-        coordinator: "ika",
-        sessionIdentifier: dkg.sessionIdentifier,
-        networkEncryptionKeyId: dkg.networkEncryptionKeyId,
-        userShareEncryptionKeys: dkg.userShareEncryptionKeys,
-        userSecretKeyShare: dkg.userSecretKeyShare,
-        userPublicOutput: dkg.userPublicOutput,
-      };
-      setDWallet(generated);
-      setPrivateKeyCopied(false);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Ika dWallet DKG request failed.");
-    }
-  }
-
-  async function copyPrivateKey() {
-    if (!dwallet?.privateKey) return;
-    await navigator.clipboard.writeText(dwallet.privateKey);
-    setPrivateKeyCopied(true);
-  }
-
   async function runMint() {
     setError(undefined);
 
@@ -173,7 +129,6 @@ export function NFTMintCard() {
       const adapter = createInkAdapter({
         suiAddress: account.address,
         monadAddress,
-        dwalletPrivateKey: dwallet?.privateKey,
         signSuiTransaction: async (transaction) => {
           const result = await signAndExecuteTransaction({
             transaction,
@@ -235,8 +190,6 @@ export function NFTMintCard() {
         proofHash,
         presignId,
         unverifiedPresignCapId,
-        userSecretKeyShare: dwallet?.userSecretKeyShare,
-        userPublicOutput: dwallet?.userPublicOutput,
       });
       const signResult = await signAndExecuteTransaction({ transaction: signRequest.transaction });
       const signId = findCreatedObjectId(signResult, "SignSession");
@@ -392,40 +345,14 @@ export function NFTMintCard() {
               id="monad-address"
               className="min-h-11 w-full rounded-lg border border-line bg-bg px-3 text-sm text-ink placeholder:text-muted focus:border-primary"
               value={monadAddress}
-              onChange={(event) => {
-                setMonadAddress(event.target.value);
-                setDWallet(undefined);
-              }}
+              onChange={(event) => setMonadAddress(event.target.value)}
               placeholder="0x..."
               spellCheck={false}
             />
-            <Button type="button" variant="secondary" className="shrink-0" onClick={createDWallet}>
-              <KeyRound size={16} />
-              Create Ika dWallet
-            </Button>
           </div>
           <p className="mt-2 text-xs leading-5 text-muted">
-            This is the Monad address that receives the NFT when the Ika dWallet mint step is submitted.
+            This is the Monad address that receives the NFT. Minting is signed by the configured production Ika dWallet.
           </p>
-          {dwallet && (
-            <div className="mt-4 rounded-lg border border-primary/30 bg-primary/10 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-ink">Ika DKG request submitted</p>
-                  <p className="mt-1 break-words text-xs text-muted">{dwallet.dWalletCapId ?? dwallet.id}</p>
-                </div>
-                {dwallet.privateKey && (
-                  <Button type="button" variant="secondary" onClick={copyPrivateKey}>
-                    <Copy size={16} />
-                    {privateKeyCopied ? "Copied" : "Copy key"}
-                  </Button>
-                )}
-              </div>
-              <p className="mt-3 text-xs leading-5 text-warning">
-                Save the dWallet ID, cap ID, EVM address, and user share data from this Ika setup step. The mint button uses the configured Ika dWallet as the Monad minter.
-              </p>
-            </div>
-          )}
           {!configured && (
             <p className="mt-4 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm leading-6 text-warning">
               Configure the Sui package, Sui collection, Monad receipt contract, and Ika dWallet signer before enabling paid minting.

@@ -4,8 +4,19 @@ import { Cpu } from "lucide-react";
 import "./globals.css";
 import { Providers } from "./providers";
 
+function toAbsoluteUrl(url: string) {
+  return /^https?:\/\//.test(url) ? url : `https://${url}`;
+}
+
+const appUrl = toAbsoluteUrl(
+  process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() ||
+    process.env.VERCEL_URL?.trim() ||
+    "useink.xyz",
+);
+
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "https://useink.xyz"),
+  metadataBase: new URL(appUrl),
   title: "Ink CrossMint",
   description: "Pay with Sui. NFT lives on Monad. Coordinated by Ink + Ika.",
   icons: {
@@ -25,6 +36,7 @@ export const metadata: Metadata = {
         url: "/og-image.png",
         width: 1200,
         height: 630,
+        type: "image/png",
         alt: "Ink CrossMint",
       },
     ],

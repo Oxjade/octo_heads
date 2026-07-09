@@ -1,31 +1,25 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from "@mysten/dapp-kit";
 import { isAddress, keccak256, stringToBytes } from "viem";
-import { BadgeCheck, Coins, Copy, ExternalLink, Fingerprint, KeyRound } from "lucide-react";
+import { BadgeCheck, Coins, Copy, ExternalLink, Fingerprint, KeyRound, Send, UserRound } from "lucide-react";
 import { collectionConfig } from "@/config/collection";
 import { monadConfig } from "@/config/chains";
 import { ikaRuntimeConfig, requireIkaMintSigner } from "@/config/ika";
 import { createInkAdapter } from "@/lib/ink/InkAdapter";
 import type { DWallet } from "@/lib/ink/types";
 import type { StoredMint } from "@/lib/storage/localStore";
-import { saveStoredMint } from "@/lib/storage/localStore";
+import { loadInkUsername, loadTelegramJoined, saveInkUsername, saveStoredMint, saveTelegramJoined } from "@/lib/storage/localStore";
 import { buildInkPassMetadata } from "@/lib/metadata/buildMetadata";
 import { uploadMetadata } from "@/lib/metadata/uploadMetadata";
 import { buildIkaDWalletDkgTransaction, buildIkaMonadMintPassSignTransaction, buildIkaPresignTransaction, submitCompletedIkaMintPassSignature } from "@/lib/ika/mpc";
 import { getMonadAddressHash } from "@/lib/monad/proof";
-import { Button, Panel, Stat } from "./ui";
-import { defaultTimelineLabels, TimelineStep, TransactionTimeline } from "./TransactionTimeline";
+import { Button, Panel, Stat, buttonClassName } from "./ui";
 import { MintSuccessModal } from "./MintSuccessModal";
 
-function createSteps(activeIndex = -1, failedIndex = -1, error?: string): TimelineStep[] {
-  return defaultTimelineLabels.map((label, index) => ({
-    label,
-    state: failedIndex === index ? "failed" : index < activeIndex ? "completed" : index === activeIndex ? "active" : "pending",
-    error: failedIndex === index ? error : undefined,
-  }));
-}
+const INK_WAITLIST_URL = "https://www.useink.xyz/purchase";
+const INK_TELEGRAM_URL = "https://t.me/+xKopIb4T7To3NTM8";
 
 function findCreatedObjectId(
   result: { objectChanges?: Array<{ type: string; objectId?: string; objectType?: string }> },
@@ -35,31 +29,6 @@ function findCreatedObjectId(
     if (change.type !== "created" || !change.objectType) return false;
     return change.objectType.endsWith(`::${typeName}`) || change.objectType.includes(`::${typeName}<`);
   })?.objectId;
-}
-
-function suiExplorerUrl(objectId: string) {
-  return `https://testnet.suivision.xyz/object/${objectId}`;
-}
-
-function monadExplorerUrl(address: string) {
-  return `https://testnet.monadexplorer.com/address/${address}`;
-}
-
-function ExplorerLink({ label, value, href }: { label: string; value: string; href: string }) {
-  return (
-    <a
-      className="group rounded-lg border border-line bg-bg/45 p-4 transition hover:border-primary/70 hover:bg-surface-2 focus-visible:outline-primary"
-      href={href}
-      rel="noreferrer"
-      target="_blank"
-    >
-      <span className="flex items-center justify-between gap-3 text-xs font-medium text-muted">
-        {label}
-        <ExternalLink size={14} className="shrink-0 transition group-hover:text-primary" />
-      </span>
-      <span className="mt-2 block break-all text-sm font-semibold text-ink">{value}</span>
-    </a>
-  );
 }
 
 export function NFTMintCard() {
@@ -88,9 +57,11 @@ export function NFTMintCard() {
       };
     },
   });
-  const [steps, setSteps] = useState<TimelineStep[]>(() => createSteps());
   const [isMinting, setIsMinting] = useState(false);
   const [mintedCount, setMintedCount] = useState(0);
+  const [inkUsername, setInkUsername] = useState("");
+  const [savedInkUsername, setSavedInkUsername] = useState("");
+  const [telegramJoined, setTelegramJoined] = useState(false);
   const [monadAddress, setMonadAddress] = useState("");
   const [dwallet, setDWallet] = useState<DWallet | undefined>();
   const [privateKeyCopied, setPrivateKeyCopied] = useState(false);
@@ -98,6 +69,14 @@ export function NFTMintCard() {
   const [error, setError] = useState<string | undefined>();
 
   const nextMintNumber = useMemo(() => mintedCount + 1, [mintedCount]);
+  const inkHandle = useMemo(() => {
+    const normalized = inkUsername.trim().toLowerCase().replace(/^@/, "");
+    if (!normalized) return "";
+    return normalized.endsWith(".ink") ? normalized : `${normalized}.ink`;
+  }, [inkUsername]);
+  const inkHandleIsValid = !inkHandle || /^[a-z0-9][a-z0-9-]{1,28}\.ink$/.test(inkHandle);
+  const inkHandleCanBeSaved = Boolean(inkHandle && inkHandleIsValid);
+  const inkHandleIsSaved = Boolean(inkHandle && inkHandle === savedInkUsername);
   const ikaMintReady = Boolean(
     ikaRuntimeConfig.ikaCoinObjectId &&
       ikaRuntimeConfig.dWalletId &&
@@ -105,6 +84,29 @@ export function NFTMintCard() {
       ikaRuntimeConfig.dWalletEvmAddress,
   );
   const configured = Boolean(collectionConfig.packageId && collectionConfig.collectionId && monadConfig.receiptContractAddress && ikaMintReady);
+
+  useEffect(() => {
+    const stored = loadInkUsername();
+    if (!stored) return;
+    setInkUsername(stored);
+    setSavedInkUsername(stored);
+  }, []);
+
+  useEffect(() => {
+    setTelegramJoined(loadTelegramJoined());
+  }, []);
+
+  function setInkAppUsername() {
+    if (!inkHandleCanBeSaved) return;
+    saveInkUsername(inkHandle);
+    setSavedInkUsername(inkHandle);
+  }
+
+  function joinTelegram() {
+    saveTelegramJoined(true);
+    setTelegramJoined(true);
+    window.open(INK_TELEGRAM_URL, "_blank", "noopener,noreferrer");
+  }
 
   async function createDWallet() {
     setError(undefined);
@@ -160,8 +162,12 @@ export function NFTMintCard() {
       return;
     }
 
+    if (!telegramJoined) {
+      setError("Join the Ink Telegram before minting.");
+      return;
+    }
+
     setIsMinting(true);
-    setSteps(createSteps(0));
 
     try {
       const adapter = createInkAdapter({
@@ -169,7 +175,6 @@ export function NFTMintCard() {
         monadAddress,
         dwalletPrivateKey: dwallet?.privateKey,
         signSuiTransaction: async (transaction) => {
-          setSteps(createSteps(2));
           const result = await signAndExecuteTransaction({
             transaction,
           });
@@ -178,23 +183,19 @@ export function NFTMintCard() {
       });
 
       const user = await adapter.connect();
-      setSteps(createSteps(1));
 
       const targetMonadAddress = user.monadAddress ?? monadAddress;
       const monadAddressHash = getMonadAddressHash(targetMonadAddress);
       const pendingProofUri = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://useink.xyz"}/proofs/pending/${Date.now()}`;
 
-      setSteps(createSteps(3));
       const mint = await adapter.acceptSuiPayment({
         packageId: collectionConfig.packageId,
         collectionId: collectionConfig.collectionId,
         monadAddressHash,
         proofUri: pendingProofUri,
       });
-      setSteps(createSteps(4));
 
       const mintNumber = mint.mintNumber ?? nextMintNumber;
-      setSteps(createSteps(5));
       const ikaSigner = requireIkaMintSigner();
       let presignId = ikaSigner.presignId;
       let unverifiedPresignCapId = ikaSigner.unverifiedPresignCapId;
@@ -224,7 +225,6 @@ export function NFTMintCard() {
           }),
         ),
       );
-      setSteps(createSteps(6));
       const signRequest = await buildIkaMonadMintPassSignTransaction({
         suiClient,
         dWalletId: ikaSigner.dWalletId,
@@ -245,7 +245,6 @@ export function NFTMintCard() {
         throw new Error("Ika sign request was submitted, but the SignSession object ID was not visible in Sui object changes.");
       }
 
-      setSteps(createSteps(7));
       const monadMint = await submitCompletedIkaMintPassSignature({
         suiClient,
         signId,
@@ -274,7 +273,6 @@ export function NFTMintCard() {
       });
       const metadataUri = await uploadMetadata(metadata);
 
-      setSteps(createSteps(8));
       const storedMint: StoredMint = {
         ...mint,
         mintNumber,
@@ -285,19 +283,16 @@ export function NFTMintCard() {
       saveStoredMint(storedMint);
       setLastMint(storedMint);
       setMintedCount((value) => value + 1);
-      setSteps(createSteps(9));
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Mint failed. Check wallet status and chain configuration.";
-      const activeIndex = steps.findIndex((step) => step.state === "active");
       setError(message);
-      setSteps(createSteps(Math.max(activeIndex, 0), Math.max(activeIndex, 0), message));
     } finally {
       setIsMinting(false);
     }
   }
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[0.95fr_1.05fr]">
+    <div className={lastMint?.proof ? "grid gap-5 lg:grid-cols-[0.95fr_1.05fr]" : "mx-auto grid max-w-2xl gap-5"}>
       <Panel className="overflow-hidden p-0">
         <div className="border-b border-line bg-bg p-6">
           <img
@@ -323,13 +318,72 @@ export function NFTMintCard() {
             <Stat label="Mint Price" value={`${collectionConfig.mintPrice} SUI`} />
             <Stat label="NFT Chain" value="Monad" />
           </div>
-          {collectionConfig.packageId && collectionConfig.collectionId && monadConfig.receiptContractAddress && (
-            <div className="mt-3 grid gap-3">
-              <ExplorerLink label="Sui package" value={collectionConfig.packageId} href={suiExplorerUrl(collectionConfig.packageId)} />
-              <ExplorerLink label="Sui payment collection" value={collectionConfig.collectionId} href={suiExplorerUrl(collectionConfig.collectionId)} />
-              <ExplorerLink label="Monad NFT contract" value={monadConfig.receiptContractAddress} href={monadExplorerUrl(monadConfig.receiptContractAddress)} />
+          <div className="mt-5 rounded-lg border border-line bg-bg/45 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <label className="text-sm font-semibold text-ink" htmlFor="ink-username">
+                  Ink app username
+                </label>
+                <p className="mt-1 text-xs leading-5 text-muted">
+                  Set the handle you want to use when the Ink app opens.
+                </p>
+              </div>
+              {savedInkUsername && (
+                <span className="inline-flex items-center gap-2 rounded-full bg-success/15 px-3 py-1 text-xs font-semibold text-success">
+                  <UserRound size={13} />
+                  {savedInkUsername}
+                </span>
+              )}
             </div>
-          )}
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <input
+                id="ink-username"
+                className="min-h-11 w-full rounded-lg border border-line bg-bg px-3 text-sm text-ink placeholder:text-muted focus:border-primary focus:outline-none"
+                value={inkUsername}
+                onChange={(event) => {
+                  setInkUsername(event.target.value);
+                }}
+                placeholder="nova.ink"
+                spellCheck={false}
+                autoCapitalize="none"
+              />
+              <Button
+                type="button"
+                variant={inkHandleIsSaved ? "secondary" : "primary"}
+                className="shrink-0"
+                disabled={!inkHandleCanBeSaved || inkHandleIsSaved}
+                onClick={setInkAppUsername}
+              >
+                <UserRound size={16} />
+                {inkHandleIsSaved ? "Username set" : "Set username"}
+              </Button>
+            </div>
+            {!inkHandleIsValid && (
+              <p className="mt-2 text-xs leading-5 text-warning">
+                Use 2-29 lowercase letters, numbers, or hyphens before .ink.
+              </p>
+            )}
+            {inkHandleIsSaved && (
+              <p className="mt-2 text-xs leading-5 text-success">
+                Saved for this demo. Join the waitlist to continue into Ink early access.
+              </p>
+            )}
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <a className={buttonClassName({ variant: "secondary" })} href={INK_WAITLIST_URL} target="_blank" rel="noreferrer">
+                Join waitlist
+                <ExternalLink size={15} />
+              </a>
+              <Button type="button" variant={telegramJoined ? "secondary" : "ghost"} className="border border-line" onClick={joinTelegram}>
+                <Send size={15} />
+                {telegramJoined ? "Telegram joined" : "Join Telegram"}
+              </Button>
+            </div>
+            {!telegramJoined && (
+              <p className="mt-2 text-xs leading-5 text-warning">
+                Telegram is required before minting.
+              </p>
+            )}
+          </div>
           <label className="mt-5 block text-sm font-semibold text-ink" htmlFor="monad-address">
             Monad NFT wallet
           </label>
@@ -378,23 +432,22 @@ export function NFTMintCard() {
             </p>
           )}
           {error && <p className="mt-4 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm leading-6 text-danger">{error}</p>}
-          <Button className="mt-5 w-full" disabled={isMinting || !account?.address || !configured || !monadAddress} onClick={runMint}>
+          <Button className="mt-5 w-full" disabled={isMinting || !account?.address || !configured || !monadAddress || !telegramJoined} onClick={runMint}>
             <Coins size={16} />
-            {isMinting ? "Coordinating mint" : "Pay on Sui, mint on Monad"}
+            {isMinting ? "Coordinating mint" : telegramJoined ? "Pay on Sui, mint on Monad" : "Join Telegram to mint"}
           </Button>
         </div>
       </Panel>
-      <div className="space-y-5">
-        <TransactionTimeline steps={steps} />
-        {lastMint?.proof && (
+      {lastMint?.proof && (
+        <div className="space-y-5">
           <Panel>
             <h2 className="text-lg font-semibold text-ink">Monad NFT mint signed</h2>
             <p className="mt-3 text-sm leading-6 text-muted">dWallet signer: {lastMint.proof.signer}</p>
             <p className="mt-2 text-sm leading-6 text-muted">Monad mint tx: {lastMint.proof.monadMintTxHash ?? lastMint.proof.claimDigest}</p>
             <p className="mt-2 break-words text-sm leading-6 text-muted">{lastMint.proof.proofHash}</p>
           </Panel>
-        )}
-      </div>
+        </div>
+      )}
       <MintSuccessModal mint={lastMint} onClose={() => setLastMint(undefined)} />
     </div>
   );

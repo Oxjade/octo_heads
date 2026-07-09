@@ -1,11 +1,11 @@
 import { createPublicClient, http } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
-const expectedChainId = Number(process.env.NEXT_PUBLIC_MONAD_CHAIN_ID || 10143);
+const expectedChainId = Number(process.env.NEXT_PUBLIC_MONAD_CHAIN_ID || 143);
 const rpcUrls = [
   ...(process.env.NEXT_PUBLIC_MONAD_RPC_URL ? process.env.NEXT_PUBLIC_MONAD_RPC_URL.split(",") : []),
-  "https://testnet-rpc.monad.xyz/",
-  "https://monad-testnet.drpc.org",
+  "https://rpc.monad.xyz",
+  "https://monad-mainnet.drpc.org",
 ].map((url) => url.trim()).filter(Boolean);
 
 const privateKey = generatePrivateKey();
@@ -17,7 +17,7 @@ for (const rpcUrl of rpcUrls) {
   try {
     const monadTestnet = {
       id: expectedChainId,
-      name: "Monad Testnet",
+      name: expectedChainId === 143 ? "Monad Mainnet" : "Monad Testnet",
       nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
       rpcUrls: { default: { http: [rpcUrl] } },
     };

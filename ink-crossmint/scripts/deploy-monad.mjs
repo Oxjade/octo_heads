@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Deploy InkPassReceipt.sol to Monad testnet
+ * Deploy InkPassReceipt.sol to Monad
  *
  * Prerequisites:
  * 1. Have .env.local with NEXT_PUBLIC_IKA_DWALLET_EVM_ADDRESS set
@@ -107,11 +107,11 @@ function compileContract() {
 
 async function main() {
   try {
-    console.log("🚀 Deploying InkPassReceipt to Monad Testnet\n");
+    console.log("🚀 Deploying InkPassReceipt to Monad\n");
 
     const env = loadEnv();
     const rpcUrl = env.NEXT_PUBLIC_MONAD_RPC_URL;
-    const chainId = Number(env.NEXT_PUBLIC_MONAD_CHAIN_ID || 10143);
+    const chainId = Number(env.NEXT_PUBLIC_MONAD_CHAIN_ID || 143);
     const ikaEVMAddress = env.NEXT_PUBLIC_IKA_DWALLET_EVM_ADDRESS;
 
     if (!rpcUrl) {
@@ -146,11 +146,11 @@ async function main() {
 
     const monad = defineChain({
       id: chainId,
-      name: "Monad Testnet",
+      name: chainId === 143 ? "Monad Mainnet" : "Monad Testnet",
       nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
       rpcUrls: { default: { http: [rpcUrl] } },
       blockExplorers: {
-        default: { name: "Monad Explorer", url: "https://testnet.monadexplorer.com" },
+        default: { name: "Monad Explorer", url: chainId === 143 ? "https://monadvision.com" : "https://testnet.monadexplorer.com" },
       },
     });
     const transport = http(rpcUrl);
@@ -167,8 +167,7 @@ async function main() {
     console.log(`💰 Balance: ${formatEther(balance)} MON\n`);
 
     if (balance === 0n) {
-      console.error("❌ No MON balance. Get testnet MON from faucet:");
-      console.log("   https://faucet.monad.xyz\n");
+      console.error("❌ No MON balance for deployment gas.");
       process.exit(1);
     }
 

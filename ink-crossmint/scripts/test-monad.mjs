@@ -1,8 +1,8 @@
-const expectedChainId = Number(process.env.NEXT_PUBLIC_MONAD_CHAIN_ID || 10143);
+const expectedChainId = Number(process.env.NEXT_PUBLIC_MONAD_CHAIN_ID || 143);
 const rpcUrls = [
   ...(process.env.NEXT_PUBLIC_MONAD_RPC_URL ? process.env.NEXT_PUBLIC_MONAD_RPC_URL.split(",") : []),
-  "https://testnet-rpc.monad.xyz/",
-  "https://monad-testnet.drpc.org",
+  "https://rpc.monad.xyz",
+  "https://monad-mainnet.drpc.org",
 ].map((url) => url.trim()).filter(Boolean);
 
 let lastError;

@@ -15,8 +15,8 @@ export const suiRpcUrl =
 export const suiGraphqlUrl = process.env.NEXT_PUBLIC_SUI_GRAPHQL_URL ?? process.env.SUI_GRAPHQL_URL ?? "";
 
 export const monadConfig = {
-  rpcUrl: process.env.NEXT_PUBLIC_MONAD_RPC_URL ?? "https://testnet-rpc.monad.xyz/",
-  chainId: Number(process.env.NEXT_PUBLIC_MONAD_CHAIN_ID || 10143),
+  rpcUrl: process.env.NEXT_PUBLIC_MONAD_RPC_URL ?? "https://rpc.monad.xyz",
+  chainId: Number(process.env.NEXT_PUBLIC_MONAD_CHAIN_ID || 143),
   proofMode: (process.env.NEXT_PUBLIC_MONAD_PROOF_MODE ?? "signature") as MonadProofMode,
   claimContractAddress: process.env.NEXT_PUBLIC_MONAD_CLAIM_CONTRACT ?? "",
   receiptContractAddress: process.env.NEXT_PUBLIC_MONAD_RECEIPT_CONTRACT ?? "",

@@ -37,8 +37,8 @@ const abi = parseAbi([
 
 async function main() {
   const env = loadEnv();
-  const rpcUrl = env.NEXT_PUBLIC_MONAD_RPC_URL ?? "https://testnet-rpc.monad.xyz/";
-  const chainId = Number(env.NEXT_PUBLIC_MONAD_CHAIN_ID || 10143);
+  const rpcUrl = env.NEXT_PUBLIC_MONAD_RPC_URL ?? "https://rpc.monad.xyz";
+  const chainId = Number(env.NEXT_PUBLIC_MONAD_CHAIN_ID || 143);
   const contract = env.NEXT_PUBLIC_MONAD_RECEIPT_CONTRACT;
   const newMinter = process.argv[2] ?? env.NEXT_PUBLIC_IKA_DWALLET_EVM_ADDRESS ?? env.IKA_ETH_ADDRESS;
   let privateKey = env.MONAD_PRIVATE_KEY;
@@ -50,7 +50,7 @@ async function main() {
 
   const chain = defineChain({
     id: chainId,
-    name: "Monad Testnet",
+    name: chainId === 143 ? "Monad Mainnet" : "Monad Testnet",
     nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
     rpcUrls: { default: { http: [rpcUrl] } },
   });

@@ -11,8 +11,10 @@ use std::string::{Self, String};
 
 const E_SUPPLY_CAP_REACHED: u64 = 0;
 const E_INSUFFICIENT_PAYMENT: u64 = 1;
+const E_INVALID_TREASURY: u64 = 2;
 const SUPPLY_CAP: u64 = 250;
 const MINT_PRICE_MIST: u64 = 1_500_000_000;
+const DEFAULT_TREASURY: address = @0x05b2a9dd20f1b50ab289ed134aeb6d78fa24687b5dd0512bd914c059d3fe116e;
 
 public struct AdminCap has key, store {
     id: UID,
@@ -35,6 +37,10 @@ public struct PaymentAccepted has copy, drop {
     paid_at: u64,
 }
 
+public struct TreasuryUpdated has copy, drop {
+    treasury: address,
+}
+
 fun init(ctx: &mut TxContext) {
     let admin = AdminCap { id: object::new(ctx) };
     let collection = Collection {
@@ -46,11 +52,23 @@ fun init(ctx: &mut TxContext) {
         image_url: string::utf8(b"ipfs://bafkreihqp7t3lq7d3hifchcfanwqm5ezjrrfexf5yom6cy66jg422naqfm"),
         minted: 0,
         max_supply: SUPPLY_CAP,
-        treasury: tx_context::sender(ctx),
+        treasury: DEFAULT_TREASURY,
     };
 
     transfer::transfer(admin, tx_context::sender(ctx));
     transfer::share_object(collection);
+}
+
+public entry fun set_treasury(
+    _admin: &AdminCap,
+    collection: &mut Collection,
+    treasury: address,
+) {
+    assert!(treasury != @0x0, E_INVALID_TREASURY);
+
+    collection.treasury = treasury;
+
+    event::emit(TreasuryUpdated { treasury });
 }
 
 #[allow(lint(public_entry))]
@@ -87,4 +105,8 @@ public fun minted(collection: &Collection): u64 {
 
 public fun max_supply(collection: &Collection): u64 {
     collection.max_supply
+}
+
+public fun treasury(collection: &Collection): address {
+    collection.treasury
 }

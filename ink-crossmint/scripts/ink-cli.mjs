@@ -7,7 +7,7 @@ import { createInkClient, IkaEvmSigningConnector } from "@ink-sdk/sdk";
 import { Curve, UserShareEncryptionKeys } from "@ika.xyz/sdk";
 
 const DEFAULT_ENV_FILE = ".env.local";
-const MONAD_TESTNET_CHAIN_ID = 10143;
+const MONAD_MAINNET_CHAIN_ID = 143;
 const DEFAULT_SUI_TESTNET_RPC = "https://sui-testnet-rpc.publicnode.com";
 const FETCH_RETRIES = 6;
 
@@ -225,7 +225,7 @@ async function createDWallet(options) {
 
   const chain = {
     type: "evm",
-    chainId: Number(env.NEXT_PUBLIC_MONAD_CHAIN_ID ?? MONAD_TESTNET_CHAIN_ID),
+    chainId: Number(env.NEXT_PUBLIC_MONAD_CHAIN_ID ?? MONAD_MAINNET_CHAIN_ID),
     rpcUrl: env.NEXT_PUBLIC_MONAD_RPC_URL,
   };
   const ink = createInkClient({
@@ -246,7 +246,7 @@ async function createDWallet(options) {
     chains: [chain],
     config: {
       app: "ink-crossmint",
-      target: "monad-testnet",
+      target: chain.chainId === 143 ? "monad-mainnet" : "monad-testnet",
     },
   });
   const updates = walletToUpdates(wallet, env);

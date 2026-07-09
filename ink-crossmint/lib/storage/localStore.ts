@@ -7,6 +7,8 @@ export type StoredMint = SuiPaymentResult & {
 };
 
 const STORAGE_KEY = "ink-crossmint:mints";
+const INK_USERNAME_KEY = "ink-crossmint:ink-username";
+const TELEGRAM_JOINED_KEY = "ink-crossmint:telegram-joined";
 
 export function loadStoredMints(): StoredMint[] {
   if (typeof window === "undefined") return [];
@@ -26,4 +28,24 @@ export function saveStoredMint(mint: StoredMint) {
 export function clearStoredMints() {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(STORAGE_KEY);
+}
+
+export function loadInkUsername() {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem(INK_USERNAME_KEY) ?? "";
+}
+
+export function saveInkUsername(username: string) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(INK_USERNAME_KEY, username);
+}
+
+export function loadTelegramJoined() {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(TELEGRAM_JOINED_KEY) === "true";
+}
+
+export function saveTelegramJoined(joined: boolean) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(TELEGRAM_JOINED_KEY, joined ? "true" : "false");
 }

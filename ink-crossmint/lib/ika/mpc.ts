@@ -28,6 +28,8 @@ export type IkaMpcSignRequest = {
   unsignedTransactionHash: Hex;
 };
 
+type IkaClient = Awaited<ReturnType<typeof createIkaClient>>;
+
 export async function createIkaClient(suiClient: unknown) {
   const sdk = await loadIkaSdk();
   const ikaClient = new sdk.IkaClient({
@@ -112,7 +114,7 @@ export async function buildIkaDWalletDkgTransaction(input: {
 export async function buildIkaPresignTransaction(input: {
   suiClient: unknown;
   dWalletId: string;
-  ikaClient?: Awaited<ReturnType<typeof createIkaClient>>;
+  ikaClient?: IkaClient;
 }) {
   const { ikaCoinObjectId, suiFeeMist } = requireIkaFeeObjects();
   const sdk = await loadIkaSdk();
@@ -149,7 +151,7 @@ export async function buildIkaMonadMintPassSignTransaction(input: {
   unverifiedPresignCapId: string;
   userSecretKeyShare?: Hex;
   userPublicOutput?: Hex;
-  ikaClient?: Awaited<ReturnType<typeof createIkaClient>>;
+  ikaClient?: IkaClient;
 }) {
   const { ikaCoinObjectId, suiFeeMist } = requireIkaFeeObjects();
   const sdk = await loadIkaSdk();
@@ -205,19 +207,18 @@ export async function buildIkaMonadMintPassSignTransaction(input: {
     suiCoin,
   };
 
-  if (isImportedKeyDWallet) {
-    await ikaTx.requestSignWithImportedKey({
-      ...signInput,
-      dWallet: dWallet as Extract<typeof dWallet, { kind: "imported-key" | "imported-key-shared" }>,
-      importedKeyMessageApproval: messageApproval,
-    });
-  } else {
-    await ikaTx.requestSign({
-      ...signInput,
-      dWallet: dWallet as Extract<typeof dWallet, { kind: "zero-trust" | "shared" }>,
-      messageApproval,
-    });
-  }
+  await requestIkaSignWithoutReturnedId({
+    sdk,
+    ikaClient,
+    tx,
+    dWallet,
+    presign,
+    verifiedPresignCap,
+    messageApproval,
+    message,
+    signInput,
+    isImportedKeyDWallet,
+  });
 
   return {
     transaction: tx,
@@ -231,7 +232,7 @@ export async function submitCompletedIkaMintPassSignature(input: {
   suiClient: unknown;
   signId: string;
   monadTransaction: MonadMintPassTransaction;
-  ikaClient?: Awaited<ReturnType<typeof createIkaClient>>;
+  ikaClient?: IkaClient;
 }) {
   const sdk = await loadIkaSdk();
   const ikaClient = input.ikaClient ?? await createIkaClient(input.suiClient);
@@ -279,6 +280,79 @@ async function createUserShareEncryptionKeys(sdk: IkaSdk, rootSeed?: Hex) {
 function randomHex32() {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   return keccak256(bytes);
+}
+
+async function requestIkaSignWithoutReturnedId(input: {
+  sdk: IkaSdk;
+  ikaClient: IkaClient;
+  tx: Transaction;
+  dWallet: Awaited<ReturnType<IkaClient["getDWallet"]>>;
+  presign: Awaited<ReturnType<IkaClient["getPresignInParticularState"]>>;
+  verifiedPresignCap: unknown;
+  messageApproval: unknown;
+  message: Uint8Array;
+  signInput: {
+    ikaCoin: unknown;
+    suiCoin: unknown;
+  };
+  isImportedKeyDWallet: boolean;
+}) {
+  const publicUserSecretKeyShare = input.dWallet.public_user_secret_key_share;
+  const publicOutput = input.dWallet.state.Active?.public_output;
+  const presignBytes = input.presign.state.Completed?.presign;
+
+  if (!publicUserSecretKeyShare || !publicOutput || !presignBytes) {
+    throw new Error("Ika dWallet sign requires public key shares, active public output, and a completed presign.");
+  }
+
+  const userSignMessage = await input.sdk.createUserSignMessageWithPublicOutput(
+    await input.ikaClient.getProtocolPublicParameters(input.dWallet),
+    Uint8Array.from(publicOutput),
+    Uint8Array.from(publicUserSecretKeyShare),
+    Uint8Array.from(presignBytes),
+    input.message,
+    input.sdk.Hash.KECCAK256,
+    input.sdk.SignatureAlgorithm.ECDSASecp256k1,
+    input.sdk.Curve.SECP256K1,
+  );
+  const coordinatorObjectRef = input.tx.sharedObjectRef({
+    objectId: input.ikaClient.ikaConfig.objects.ikaDWalletCoordinator.objectID,
+    initialSharedVersion: input.ikaClient.ikaConfig.objects.ikaDWalletCoordinator.initialSharedVersion,
+    mutable: true,
+  });
+  const sessionIdentifier = input.sdk.coordinatorTransactions.registerSessionIdentifier(
+    input.ikaClient.ikaConfig,
+    coordinatorObjectRef,
+    crypto.getRandomValues(new Uint8Array(32)),
+    input.tx as never,
+  );
+
+  if (input.isImportedKeyDWallet) {
+    input.sdk.coordinatorTransactions.requestImportedKeySign(
+      input.ikaClient.ikaConfig,
+      coordinatorObjectRef,
+      input.verifiedPresignCap as never,
+      input.messageApproval as never,
+      userSignMessage,
+      sessionIdentifier,
+      input.signInput.ikaCoin as never,
+      input.signInput.suiCoin as never,
+      input.tx as never,
+    );
+    return;
+  }
+
+  input.sdk.coordinatorTransactions.requestSign(
+    input.ikaClient.ikaConfig,
+    coordinatorObjectRef,
+    input.verifiedPresignCap as never,
+    input.messageApproval as never,
+    userSignMessage,
+    sessionIdentifier,
+    input.signInput.ikaCoin as never,
+    input.signInput.suiCoin as never,
+    input.tx as never,
+  );
 }
 
 async function retryIkaNetworkRead<T>(operation: () => Promise<T>, label: string) {

@@ -182,6 +182,8 @@ function validateRequest(body: CoordinatorMintRequest) {
 }
 
 export async function POST(request: Request) {
+  let phase = "coordinator setup";
+
   try {
     const input = validateRequest((await request.json()) as CoordinatorMintRequest);
     const suiClient = getSuiClient();
@@ -189,6 +191,7 @@ export async function POST(request: Request) {
     const coordinatorAddress = coordinatorKeypair.getPublicKey().toSuiAddress();
     const ikaSigner = requireIkaMintSigner();
 
+    phase = "verify Sui payment";
     const verifiedPayment = await verifySuiPayment({
       suiClient,
       suiDigest: input.suiDigest,
@@ -202,6 +205,7 @@ export async function POST(request: Request) {
       throw new Error("Sui payment was verified, but the mint number was not available from the event or collection state.");
     }
 
+    phase = "create Ika presign";
     const ikaClient = await createIkaClient(suiClient);
     const presign = await buildIkaPresignTransaction({
       suiClient,
@@ -226,6 +230,7 @@ export async function POST(request: Request) {
       throw new Error("Coordinator created an Ika presign, but the presign object IDs were not visible.");
     }
 
+    phase = "build Ika sign request";
     const proofHash = keccak256(
       stringToBytes(
         JSON.stringify({
@@ -252,6 +257,7 @@ export async function POST(request: Request) {
     });
     signRequest.transaction.setSender(coordinatorAddress);
 
+    phase = "submit Ika sign request";
     const signResult = await suiClient.signAndExecuteTransaction({
       signer: coordinatorKeypair,
       transaction: signRequest.transaction,
@@ -266,6 +272,7 @@ export async function POST(request: Request) {
       throw new Error("Coordinator submitted an Ika sign request, but the SignSession object ID was not visible.");
     }
 
+    phase = "submit Monad mint";
     const monadMint = await submitCompletedIkaMintPassSignature({
       suiClient,
       signId,
@@ -282,6 +289,6 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Coordinator mint failed.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json({ error: `${phase}: ${message}` }, { status: 400 });
   }
 }

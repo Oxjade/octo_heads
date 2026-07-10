@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from "@mysten/dapp-kit";
+import { normalizeSuiAddress } from "@mysten/sui/utils";
 import { isAddress, keccak256, stringToBytes } from "viem";
 import { BadgeCheck, Coins, ExternalLink, Fingerprint, Send, UserRound } from "lucide-react";
 import { collectionConfig } from "@/config/collection";
@@ -28,6 +29,26 @@ function findCreatedObjectId(
     if (change.type !== "created" || !change.objectType) return false;
     return change.objectType.endsWith(`::${typeName}`) || change.objectType.includes(`::${typeName}<`);
   })?.objectId;
+}
+
+async function requireAddressOwnedObject(input: {
+  suiClient: ReturnType<typeof useSuiClient>;
+  objectId: string;
+  ownerAddress: string;
+  label: string;
+}) {
+  const object = await input.suiClient.getObject({
+    id: input.objectId,
+    options: { showOwner: true },
+  });
+  const owner = object.data?.owner;
+  const addressOwner = typeof owner === "object" && owner && "AddressOwner" in owner ? owner.AddressOwner : undefined;
+
+  if (!addressOwner || normalizeSuiAddress(addressOwner) !== normalizeSuiAddress(input.ownerAddress)) {
+    throw new Error(
+      `${input.label} is owned by ${addressOwner ?? "another account"}, so the connected wallet cannot create the Ika presign/sign transaction. Public minting needs a server-side coordinator or sponsored Ika transaction flow.`,
+    );
+  }
 }
 
 export function NFTMintCard() {
@@ -156,6 +177,21 @@ export function NFTMintCard() {
 
       const mintNumber = mint.mintNumber ?? nextMintNumber;
       const ikaSigner = requireIkaMintSigner();
+
+      await Promise.all([
+        requireAddressOwnedObject({
+          suiClient,
+          objectId: ikaRuntimeConfig.ikaCoinObjectId,
+          ownerAddress: account.address,
+          label: "Ika fee coin",
+        }),
+        requireAddressOwnedObject({
+          suiClient,
+          objectId: ikaSigner.dWalletCapId,
+          ownerAddress: account.address,
+          label: "Ika dWallet cap",
+        }),
+      ]);
 
       // Initialise the Ika client once and reuse it — initialize() makes a
       // network round-trip to Ika infrastructure, so we do it a single time.

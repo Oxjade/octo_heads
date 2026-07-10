@@ -57,6 +57,7 @@ export function NFTMintCard() {
     },
   });
   const [isMinting, setIsMinting] = useState(false);
+  const [mintStatus, setMintStatus] = useState<string | undefined>();
   const [mintedCount, setMintedCount] = useState(0);
   const [inkUsername, setInkUsername] = useState("");
   const [savedInkUsername, setSavedInkUsername] = useState("");
@@ -107,6 +108,7 @@ export function NFTMintCard() {
 
   async function runMint() {
     setError(undefined);
+    setMintStatus(undefined);
 
     if (!account?.address) {
       setError("Connect a Sui wallet before minting.");
@@ -143,6 +145,8 @@ export function NFTMintCard() {
       const monadAddressHash = getMonadAddressHash(targetMonadAddress);
       const pendingProofUri = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://useink.xyz"}/proofs/pending/${Date.now()}`;
 
+      // Step 1 — Sui payment
+      setMintStatus("Step 1 / 5 — Approve the Sui payment in your wallet…");
       const mint = await adapter.acceptSuiPayment({
         packageId: collectionConfig.packageId,
         collectionId: collectionConfig.collectionId,
@@ -152,23 +156,23 @@ export function NFTMintCard() {
 
       const mintNumber = mint.mintNumber ?? nextMintNumber;
       const ikaSigner = requireIkaMintSigner();
-      let presignId = ikaSigner.presignId;
-      let unverifiedPresignCapId = ikaSigner.unverifiedPresignCapId;
 
-      if (!presignId || !unverifiedPresignCapId) {
-        const presign = await buildIkaPresignTransaction({
-          suiClient,
-          dWalletId: ikaSigner.dWalletId,
-        });
-        const presignResult = await signAndExecuteTransaction({ transaction: presign.transaction });
-        presignId = findCreatedObjectId(presignResult, "PresignSession") ?? "";
-        unverifiedPresignCapId = findCreatedObjectId(presignResult, "UnverifiedPresignCap") ?? "";
-      }
+      // Step 2 — Presign (single-use Sui object, always created fresh per mint)
+      setMintStatus("Step 2 / 5 — Approve the Ika presign transaction in your wallet…");
+      const presign = await buildIkaPresignTransaction({
+        suiClient,
+        dWalletId: ikaSigner.dWalletId,
+      });
+      const presignResult = await signAndExecuteTransaction({ transaction: presign.transaction });
+      const presignId = findCreatedObjectId(presignResult, "PresignSession") ?? "";
+      const unverifiedPresignCapId = findCreatedObjectId(presignResult, "UnverifiedPresignCap") ?? "";
 
       if (!presignId || !unverifiedPresignCapId) {
         throw new Error("Ika presign was requested, but the PresignSession or UnverifiedPresignCap object ID was not visible in Sui object changes.");
       }
 
+      // Step 3 — Ika network processes the presign (up to ~90 s)
+      setMintStatus("Step 3 / 5 — Ika network is processing the presign session… (up to ~90 s)");
       const proofHash = keccak256(
         stringToBytes(
           JSON.stringify({
@@ -191,6 +195,9 @@ export function NFTMintCard() {
         presignId,
         unverifiedPresignCapId,
       });
+
+      // Step 4 — Sign transaction (wallet approval + Ika network sign, up to ~90 s)
+      setMintStatus("Step 4 / 5 — Approve the Ika sign transaction in your wallet…");
       const signResult = await signAndExecuteTransaction({ transaction: signRequest.transaction });
       const signId = findCreatedObjectId(signResult, "SignSession");
 
@@ -198,11 +205,15 @@ export function NFTMintCard() {
         throw new Error("Ika sign request was submitted, but the SignSession object ID was not visible in Sui object changes.");
       }
 
+      setMintStatus("Step 4 / 5 — Ika network is completing the signing… (up to ~90 s)");
       const monadMint = await submitCompletedIkaMintPassSignature({
         suiClient,
         signId,
         monadTransaction: signRequest.monadTransaction,
       });
+
+      // Step 5 — Broadcast to Monad + upload metadata
+      setMintStatus("Step 5 / 5 — Broadcasting to Monad and saving metadata…");
       const proof = {
         mode: "ika-mpc" as const,
         suiObjectId: mint.objectId,
@@ -236,9 +247,11 @@ export function NFTMintCard() {
       saveStoredMint(storedMint);
       setLastMint(storedMint);
       setMintedCount((value) => value + 1);
+      setMintStatus(undefined);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Mint failed. Check wallet status and chain configuration.";
       setError(message);
+      setMintStatus(undefined);
     } finally {
       setIsMinting(false);
     }
@@ -359,9 +372,18 @@ export function NFTMintCard() {
             </p>
           )}
           {error && <p className="mt-4 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm leading-6 text-danger">{error}</p>}
+          {mintStatus && (
+            <div className="mt-4 flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+              <svg className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-primary" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+              </svg>
+              <p className="text-sm leading-6 text-primary">{mintStatus}</p>
+            </div>
+          )}
           <Button className="mt-5 w-full" disabled={isMinting || !account?.address || !configured || !monadAddress || !telegramJoined} onClick={runMint}>
             <Coins size={16} />
-            {isMinting ? "Coordinating mint" : telegramJoined ? "Pay on Sui, mint on Monad" : "Join Telegram to mint"}
+            {isMinting ? "Coordinating mint…" : telegramJoined ? "Pay on Sui, mint on Monad" : "Join Telegram to mint"}
           </Button>
         </div>
       </Panel>

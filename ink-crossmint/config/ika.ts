@@ -10,8 +10,6 @@ export const ikaRuntimeConfig = {
   dWalletId: process.env.NEXT_PUBLIC_IKA_DWALLET_ID ?? "",
   dWalletCapId: process.env.NEXT_PUBLIC_IKA_DWALLET_CAP_ID ?? "",
   dWalletEvmAddress: process.env.NEXT_PUBLIC_IKA_DWALLET_EVM_ADDRESS ?? "",
-  presignId: process.env.NEXT_PUBLIC_IKA_PRESIGN_ID ?? "",
-  unverifiedPresignCapId: process.env.NEXT_PUBLIC_IKA_UNVERIFIED_PRESIGN_CAP_ID ?? "",
 };
 
 export function requireIkaFeeObjects() {
@@ -38,7 +36,5 @@ export function requireIkaMintSigner() {
     dWalletId: ikaRuntimeConfig.dWalletId,
     dWalletCapId: ikaRuntimeConfig.dWalletCapId,
     dWalletEvmAddress: ikaRuntimeConfig.dWalletEvmAddress as `0x${string}`,
-    presignId: ikaRuntimeConfig.presignId,
-    unverifiedPresignCapId: ikaRuntimeConfig.unverifiedPresignCapId,
   };
 }

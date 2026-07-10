@@ -52,11 +52,53 @@ function getCoordinatorKeypair() {
   return Ed25519Keypair.fromSecretKey(decoded.secretKey);
 }
 
-function getSuiClient() {
+function getSuiRpcUrls() {
+  const urls = [
+    ...(process.env.IKA_SUI_RPC_URLS ?? "").split(","),
+    process.env.IKA_SUI_RPC,
+    process.env.SUI_RPC_URL,
+    process.env.NEXT_PUBLIC_SUI_RPC_URL,
+    suiRpcUrl,
+  ]
+    .map((url) => url?.trim())
+    .filter((url): url is string => Boolean(url));
+
+  return [...new Set(urls)];
+}
+
+function getSuiNetwork() {
+  return (process.env.IKA_NETWORK ?? process.env.NEXT_PUBLIC_IKA_NETWORK ?? suiNetwork) as typeof suiNetwork;
+}
+
+function getSuiClient(url = getSuiRpcUrls()[0]) {
   return new SuiJsonRpcClient({
-    url: process.env.IKA_SUI_RPC ?? process.env.SUI_RPC_URL ?? process.env.NEXT_PUBLIC_SUI_RPC_URL ?? suiRpcUrl,
-    network: (process.env.IKA_NETWORK ?? process.env.NEXT_PUBLIC_IKA_NETWORK ?? suiNetwork) as typeof suiNetwork,
+    url,
+    network: getSuiNetwork(),
   });
+}
+
+async function createIkaClientWithRpcFallback(input: { preferredSuiClient: SuiJsonRpcClient }) {
+  const urls = getSuiRpcUrls();
+  let lastError: unknown;
+
+  for (const [index, url] of urls.entries()) {
+    const suiClient = index === 0 ? input.preferredSuiClient : getSuiClient(url);
+
+    try {
+      return {
+        suiClient,
+        ikaClient: await createIkaClient(suiClient),
+      };
+    } catch (error) {
+      lastError = error;
+
+      if (!isTransientNetworkError(error) || index === urls.length - 1) {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Unable to initialize Ika client with the configured Sui RPC URLs.");
 }
 
 function parsePaymentEventJson(value: unknown) {
@@ -90,6 +132,13 @@ function normalizeMoveBytes(value: unknown) {
   }
 
   return undefined;
+}
+
+function isTransientNetworkError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const cause = error instanceof Error && error.cause instanceof Error ? error.cause.message : "";
+
+  return /network error|failed to fetch|fetch failed|timeout|timed out|etimedout|connect timeout/i.test(`${message} ${cause}`);
 }
 
 async function getCurrentCollectionMinted(input: { suiClient: SuiJsonRpcClient }) {
@@ -186,7 +235,7 @@ export async function POST(request: Request) {
 
   try {
     const input = validateRequest((await request.json()) as CoordinatorMintRequest);
-    const suiClient = getSuiClient();
+    let suiClient = getSuiClient();
     const coordinatorKeypair = getCoordinatorKeypair();
     const coordinatorAddress = coordinatorKeypair.getPublicKey().toSuiAddress();
     const ikaSigner = requireIkaMintSigner();
@@ -206,7 +255,9 @@ export async function POST(request: Request) {
     }
 
     phase = "create Ika presign";
-    const ikaClient = await createIkaClient(suiClient);
+    const ikaContext = await createIkaClientWithRpcFallback({ preferredSuiClient: suiClient });
+    suiClient = ikaContext.suiClient;
+    const ikaClient = ikaContext.ikaClient;
     const presign = await buildIkaPresignTransaction({
       suiClient,
       dWalletId: ikaSigner.dWalletId,

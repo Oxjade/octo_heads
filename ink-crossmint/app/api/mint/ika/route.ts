@@ -70,9 +70,14 @@ function parsePaymentEventJson(value: unknown) {
 
   return {
     payer: typeof event.payer === "string" ? event.payer : undefined,
-    mintNumber: Number(event.mint_number),
+    mintNumber: parsePositiveInteger(event.mint_number),
     monadAddressHash: normalizeMoveBytes(event.monad_address_hash),
   };
+}
+
+function parsePositiveInteger(value: unknown) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : undefined;
 }
 
 function normalizeMoveBytes(value: unknown) {
@@ -87,11 +92,25 @@ function normalizeMoveBytes(value: unknown) {
   return undefined;
 }
 
+async function getCurrentCollectionMinted(input: { suiClient: SuiJsonRpcClient }) {
+  const object = await input.suiClient.getObject({
+    id: collectionConfig.collectionId,
+    options: { showContent: true },
+  });
+  const content = object.data?.content;
+
+  if (!content || content.dataType !== "moveObject" || !("fields" in content)) {
+    return undefined;
+  }
+
+  return parsePositiveInteger((content.fields as { minted?: unknown }).minted);
+}
+
 async function verifySuiPayment(input: {
   suiClient: SuiJsonRpcClient;
   suiDigest: string;
   suiAddress: string;
-  mintNumber: number;
+  mintNumber?: number;
   monadAddressHash: string;
 }) {
   const transaction = await input.suiClient.getTransactionBlock({
@@ -120,13 +139,17 @@ async function verifySuiPayment(input: {
     throw new Error("Sui payment payer does not match the connected wallet.");
   }
 
-  if (payment.mintNumber !== input.mintNumber) {
+  if (payment.mintNumber && input.mintNumber && payment.mintNumber !== input.mintNumber) {
     throw new Error("Sui payment mint number does not match the coordinator request.");
   }
 
   if (payment.monadAddressHash !== input.monadAddressHash.toLowerCase()) {
     throw new Error("Sui payment Monad recipient hash does not match the coordinator request.");
   }
+
+  return {
+    mintNumber: payment.mintNumber,
+  };
 }
 
 function validateRequest(body: CoordinatorMintRequest) {
@@ -138,9 +161,9 @@ function validateRequest(body: CoordinatorMintRequest) {
     throw new Error("Sui receipt ID must match the verified Sui payment digest.");
   }
 
-  const mintNumber = Number(body.mintNumber);
+  const mintNumber = body.mintNumber === undefined ? undefined : Number(body.mintNumber);
 
-  if (!Number.isInteger(mintNumber) || mintNumber <= 0) {
+  if (mintNumber !== undefined && (!Number.isInteger(mintNumber) || mintNumber <= 0)) {
     throw new Error("Invalid mint number.");
   }
 
@@ -166,13 +189,18 @@ export async function POST(request: Request) {
     const coordinatorAddress = coordinatorKeypair.getPublicKey().toSuiAddress();
     const ikaSigner = requireIkaMintSigner();
 
-    await verifySuiPayment({
+    const verifiedPayment = await verifySuiPayment({
       suiClient,
       suiDigest: input.suiDigest,
       suiAddress: input.suiAddress,
       mintNumber: input.mintNumber,
       monadAddressHash: input.monadAddressHash,
     });
+    const mintNumber = verifiedPayment.mintNumber ?? input.mintNumber ?? (await getCurrentCollectionMinted({ suiClient }));
+
+    if (!mintNumber) {
+      throw new Error("Sui payment was verified, but the mint number was not available from the event or collection state.");
+    }
 
     const ikaClient = await createIkaClient(suiClient);
     const presign = await buildIkaPresignTransaction({
@@ -203,7 +231,7 @@ export async function POST(request: Request) {
         JSON.stringify({
           suiReceiptId: input.suiReceiptId,
           suiDigest: input.suiDigest,
-          mintNumber: input.mintNumber,
+          mintNumber,
           suiAddress: input.suiAddress,
           monadRecipient: input.monadRecipient,
         }),
@@ -247,6 +275,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       proofHash,
+      mintNumber,
       signature: monadMint.signature,
       monadMintTxHash: monadMint.hash,
       monadUnsignedTxHash: signRequest.unsignedTransactionHash,

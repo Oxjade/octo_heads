@@ -144,11 +144,6 @@ export function NFTMintCard() {
         proofUri: pendingProofUri,
       });
 
-      const mintNumber = mint.mintNumber;
-
-      if (!mintNumber) {
-        throw new Error("Sui payment succeeded, but the mint number was not visible in the PaymentAccepted event.");
-      }
       setMintStatus("Step 2 / 5 — Coordinator is creating the Ika presign and Monad mint…");
       const response = await fetch("/api/mint/ika", {
         method: "POST",
@@ -156,7 +151,7 @@ export function NFTMintCard() {
         body: JSON.stringify({
           suiDigest: mint.digest,
           suiReceiptId: mint.objectId,
-          mintNumber,
+          mintNumber: mint.mintNumber,
           suiAddress: account.address,
           monadRecipient: targetMonadAddress,
           monadAddressHash,
@@ -165,15 +160,17 @@ export function NFTMintCard() {
 
       const coordinator = (await response.json()) as {
         error?: string;
+        mintNumber?: number;
         proofHash?: `0x${string}`;
         signature?: string;
         monadMintTxHash?: string;
         monadUnsignedTxHash?: string;
       };
 
-      if (!response.ok || !coordinator.proofHash || !coordinator.monadMintTxHash) {
+      if (!response.ok || !coordinator.proofHash || !coordinator.monadMintTxHash || !coordinator.mintNumber) {
         throw new Error(coordinator.error ?? "Coordinator could not complete the Ika Monad mint.");
       }
+      const mintNumber = coordinator.mintNumber;
 
       setMintStatus("Step 5 / 5 — Saving metadata…");
       const proof = {

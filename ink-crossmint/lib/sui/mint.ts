@@ -41,3 +41,17 @@ export function extractSuiPaymentReceiptId(result: {
 }) {
   return result.digest ?? `pending-payment-${Date.now().toString(36)}`;
 }
+
+export function extractSuiPaymentMintNumber(result: {
+  events?: Array<{ type: string; parsedJson?: unknown }> | null;
+}) {
+  const event = result.events?.find((candidate) => candidate.type.endsWith("::PaymentAccepted"));
+  const parsed = event?.parsedJson;
+
+  if (!parsed || typeof parsed !== "object" || !("mint_number" in parsed)) {
+    return undefined;
+  }
+
+  const mintNumber = Number((parsed as { mint_number?: unknown }).mint_number);
+  return Number.isInteger(mintNumber) && mintNumber > 0 ? mintNumber : undefined;
+}

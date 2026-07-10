@@ -100,6 +100,8 @@ IKA_ETH_ADDRESS=
 IKA_USER_SHARE_ENCRYPTION_KEYS_B64=
 ```
 
+For public web minting, the server-side coordinator uses `IKA_SUI_PRIVATE_KEY`, `IKA_COIN_ID`, `IKA_DWALLET_ID`, `IKA_DWALLET_CAP_ID`, and `IKA_ETH_ADDRESS` from Vercel env. Users only sign the Sui payment; `/api/mint/ika` verifies that payment and then creates the fresh Ika presign/sign transaction with the coordinator wallet.
+
 Monad deployer:
 
 ```env

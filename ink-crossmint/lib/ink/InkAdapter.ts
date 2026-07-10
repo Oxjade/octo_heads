@@ -1,4 +1,4 @@
-import { buildSuiPaymentTransaction, extractSuiPaymentReceiptId } from "@/lib/sui/mint";
+import { buildSuiPaymentTransaction, extractSuiPaymentMintNumber, extractSuiPaymentReceiptId } from "@/lib/sui/mint";
 import { generateMonadProof } from "@/lib/monad/proof";
 import { createBrowserDWallet } from "./dwallet";
 import { privateKeyToAccount } from "viem/accounts";
@@ -123,6 +123,7 @@ export class BrowserInkAdapter implements InkAdapter {
     return {
       digest: result.digest ?? `local-${Date.now().toString(36)}`,
       objectId,
+      mintNumber: extractSuiPaymentMintNumber(result),
       timestamp: Date.now(),
     };
   }

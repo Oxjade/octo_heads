@@ -67,6 +67,7 @@ export type SuiTransactionSigner = (transaction: Transaction) => Promise<{
   digest?: string;
   effects?: unknown;
   objectChanges?: Array<{ type: string; objectId?: string; objectType?: string }>;
+  events?: Array<{ type: string; parsedJson?: unknown }> | null;
 }>;
 
 export interface InkAdapter {

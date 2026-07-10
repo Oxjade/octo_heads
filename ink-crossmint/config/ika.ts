@@ -4,12 +4,12 @@ export type IkaNetwork = "testnet" | "mainnet";
 
 export const ikaRuntimeConfig = {
   network: (process.env.NEXT_PUBLIC_IKA_NETWORK ?? (suiNetwork === "mainnet" ? "mainnet" : "testnet")) as IkaNetwork,
-  ikaCoinObjectId: process.env.NEXT_PUBLIC_IKA_COIN_OBJECT_ID ?? "",
+  ikaCoinObjectId: process.env.IKA_COIN_ID ?? process.env.NEXT_PUBLIC_IKA_COIN_OBJECT_ID ?? "",
   suiFeeMist: BigInt(process.env.NEXT_PUBLIC_IKA_SUI_FEE_MIST ?? "10000000"),
   signTimeoutMs: Number(process.env.NEXT_PUBLIC_IKA_SIGN_TIMEOUT_MS ?? 90000),
-  dWalletId: process.env.NEXT_PUBLIC_IKA_DWALLET_ID ?? "",
-  dWalletCapId: process.env.NEXT_PUBLIC_IKA_DWALLET_CAP_ID ?? "",
-  dWalletEvmAddress: process.env.NEXT_PUBLIC_IKA_DWALLET_EVM_ADDRESS ?? "",
+  dWalletId: process.env.IKA_DWALLET_ID ?? process.env.NEXT_PUBLIC_IKA_DWALLET_ID ?? "",
+  dWalletCapId: process.env.IKA_DWALLET_CAP_ID ?? process.env.NEXT_PUBLIC_IKA_DWALLET_CAP_ID ?? "",
+  dWalletEvmAddress: process.env.IKA_ETH_ADDRESS ?? process.env.NEXT_PUBLIC_IKA_DWALLET_EVM_ADDRESS ?? "",
 };
 
 export function requireIkaFeeObjects() {

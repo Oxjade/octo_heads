@@ -2,54 +2,22 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from "@mysten/dapp-kit";
-import { normalizeSuiAddress } from "@mysten/sui/utils";
-import { isAddress, keccak256, stringToBytes } from "viem";
+import { isAddress } from "viem";
 import { BadgeCheck, Coins, ExternalLink, Fingerprint, Send, UserRound } from "lucide-react";
 import { collectionConfig } from "@/config/collection";
 import { monadConfig } from "@/config/chains";
-import { ikaRuntimeConfig, requireIkaMintSigner } from "@/config/ika";
+import { ikaRuntimeConfig } from "@/config/ika";
 import { createInkAdapter } from "@/lib/ink/InkAdapter";
 import type { StoredMint } from "@/lib/storage/localStore";
 import { loadInkUsername, loadTelegramJoined, saveInkUsername, saveStoredMint, saveTelegramJoined } from "@/lib/storage/localStore";
 import { buildInkPassMetadata } from "@/lib/metadata/buildMetadata";
 import { uploadMetadata } from "@/lib/metadata/uploadMetadata";
-import { buildIkaMonadMintPassSignTransaction, buildIkaPresignTransaction, createIkaClient, submitCompletedIkaMintPassSignature } from "@/lib/ika/mpc";
 import { getMonadAddressHash } from "@/lib/monad/proof";
 import { Button, Panel, Stat, buttonClassName } from "./ui";
 import { MintSuccessModal } from "./MintSuccessModal";
 
 const INK_WAITLIST_URL = "https://www.useink.xyz/purchase";
 const INK_TELEGRAM_URL = "https://t.me/+xKopIb4T7To3NTM8";
-
-function findCreatedObjectId(
-  result: { objectChanges?: Array<{ type: string; objectId?: string; objectType?: string }> },
-  typeName: string,
-) {
-  return result.objectChanges?.find((change) => {
-    if (change.type !== "created" || !change.objectType) return false;
-    return change.objectType.endsWith(`::${typeName}`) || change.objectType.includes(`::${typeName}<`);
-  })?.objectId;
-}
-
-async function requireAddressOwnedObject(input: {
-  suiClient: ReturnType<typeof useSuiClient>;
-  objectId: string;
-  ownerAddress: string;
-  label: string;
-}) {
-  const object = await input.suiClient.getObject({
-    id: input.objectId,
-    options: { showOwner: true },
-  });
-  const owner = object.data?.owner;
-  const addressOwner = typeof owner === "object" && owner && "AddressOwner" in owner ? owner.AddressOwner : undefined;
-
-  if (!addressOwner || normalizeSuiAddress(addressOwner) !== normalizeSuiAddress(input.ownerAddress)) {
-    throw new Error(
-      `${input.label} is owned by ${addressOwner ?? "another account"}, so the connected wallet cannot create the Ika presign/sign transaction. Public minting needs a server-side coordinator or sponsored Ika transaction flow.`,
-    );
-  }
-}
 
 export function NFTMintCard() {
   const account = useCurrentAccount();
@@ -58,6 +26,7 @@ export function NFTMintCard() {
     digest: string;
     rawEffects?: number[];
     objectChanges?: Array<{ type: string; objectId?: string; objectType?: string }>;
+    events?: Array<{ type: string; parsedJson?: unknown }>;
   }>({
     execute: async ({ bytes, signature }) => {
       const result = await suiClient.executeTransactionBlock({
@@ -67,6 +36,7 @@ export function NFTMintCard() {
           showRawEffects: true,
           showObjectChanges: true,
           showEffects: true,
+          showEvents: true,
         },
       });
 
@@ -74,12 +44,12 @@ export function NFTMintCard() {
         digest: result.digest,
         rawEffects: result.rawEffects,
         objectChanges: result.objectChanges as Array<{ type: string; objectId?: string; objectType?: string }> | undefined,
+        events: result.events as Array<{ type: string; parsedJson?: unknown }> | undefined,
       };
     },
   });
   const [isMinting, setIsMinting] = useState(false);
   const [mintStatus, setMintStatus] = useState<string | undefined>();
-  const [mintedCount, setMintedCount] = useState(0);
   const [inkUsername, setInkUsername] = useState("");
   const [savedInkUsername, setSavedInkUsername] = useState("");
   const [telegramJoined, setTelegramJoined] = useState(false);
@@ -87,7 +57,6 @@ export function NFTMintCard() {
   const [lastMint, setLastMint] = useState<StoredMint | undefined>();
   const [error, setError] = useState<string | undefined>();
 
-  const nextMintNumber = useMemo(() => mintedCount + 1, [mintedCount]);
   const inkHandle = useMemo(() => {
     const normalized = inkUsername.trim().toLowerCase().replace(/^@/, "");
     if (!normalized) return "";
@@ -175,101 +144,50 @@ export function NFTMintCard() {
         proofUri: pendingProofUri,
       });
 
-      const mintNumber = mint.mintNumber ?? nextMintNumber;
-      const ikaSigner = requireIkaMintSigner();
+      const mintNumber = mint.mintNumber;
 
-      await Promise.all([
-        requireAddressOwnedObject({
-          suiClient,
-          objectId: ikaRuntimeConfig.ikaCoinObjectId,
-          ownerAddress: account.address,
-          label: "Ika fee coin",
+      if (!mintNumber) {
+        throw new Error("Sui payment succeeded, but the mint number was not visible in the PaymentAccepted event.");
+      }
+      setMintStatus("Step 2 / 5 — Coordinator is creating the Ika presign and Monad mint…");
+      const response = await fetch("/api/mint/ika", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          suiDigest: mint.digest,
+          suiReceiptId: mint.objectId,
+          mintNumber,
+          suiAddress: account.address,
+          monadRecipient: targetMonadAddress,
+          monadAddressHash,
         }),
-        requireAddressOwnedObject({
-          suiClient,
-          objectId: ikaSigner.dWalletCapId,
-          ownerAddress: account.address,
-          label: "Ika dWallet cap",
-        }),
-      ]);
-
-      // Initialise the Ika client once and reuse it — initialize() makes a
-      // network round-trip to Ika infrastructure, so we do it a single time.
-      setMintStatus("Step 2 / 5 — Connecting to Ika network…");
-      const ikaClient = await createIkaClient(suiClient);
-
-      // Step 2 — Presign (single-use Sui object, always created fresh per mint)
-      setMintStatus("Step 2 / 5 — Approve the Ika presign transaction in your wallet…");
-      const presign = await buildIkaPresignTransaction({
-        suiClient,
-        dWalletId: ikaSigner.dWalletId,
-        ikaClient,
       });
-      const presignResult = await signAndExecuteTransaction({ transaction: presign.transaction });
-      const presignId = findCreatedObjectId(presignResult, "PresignSession") ?? "";
-      const unverifiedPresignCapId = findCreatedObjectId(presignResult, "UnverifiedPresignCap") ?? "";
 
-      if (!presignId || !unverifiedPresignCapId) {
-        throw new Error("Ika presign was requested, but the PresignSession or UnverifiedPresignCap object ID was not visible in Sui object changes.");
+      const coordinator = (await response.json()) as {
+        error?: string;
+        proofHash?: `0x${string}`;
+        signature?: string;
+        monadMintTxHash?: string;
+        monadUnsignedTxHash?: string;
+      };
+
+      if (!response.ok || !coordinator.proofHash || !coordinator.monadMintTxHash) {
+        throw new Error(coordinator.error ?? "Coordinator could not complete the Ika Monad mint.");
       }
 
-      // Step 3 — Ika network processes the presign (up to ~90 s)
-      setMintStatus("Step 3 / 5 — Ika network is processing the presign session… (up to ~90 s)");
-      const proofHash = keccak256(
-        stringToBytes(
-          JSON.stringify({
-            suiReceiptId: mint.objectId,
-            suiDigest: mint.digest,
-            mintNumber,
-            suiAddress: account.address,
-            monadRecipient: targetMonadAddress,
-          }),
-        ),
-      );
-      const signRequest = await buildIkaMonadMintPassSignTransaction({
-        suiClient,
-        dWalletId: ikaSigner.dWalletId,
-        dWalletCapId: ikaSigner.dWalletCapId,
-        ikaDWalletAddress: ikaSigner.dWalletEvmAddress,
-        monadRecipient: targetMonadAddress as `0x${string}`,
-        suiReceiptId: mint.objectId,
-        proofHash,
-        presignId,
-        unverifiedPresignCapId,
-        ikaClient,
-      });
-
-      // Step 4 — Sign transaction (wallet approval + Ika network sign, up to ~90 s)
-      setMintStatus("Step 4 / 5 — Approve the Ika sign transaction in your wallet…");
-      const signResult = await signAndExecuteTransaction({ transaction: signRequest.transaction });
-      const signId = findCreatedObjectId(signResult, "SignSession");
-
-      if (!signId) {
-        throw new Error("Ika sign request was submitted, but the SignSession object ID was not visible in Sui object changes.");
-      }
-
-      setMintStatus("Step 4 / 5 — Ika network is completing the signing… (up to ~90 s)");
-      const monadMint = await submitCompletedIkaMintPassSignature({
-        suiClient,
-        signId,
-        ikaClient,
-        monadTransaction: signRequest.monadTransaction,
-      });
-
-      // Step 5 — Broadcast to Monad + upload metadata
-      setMintStatus("Step 5 / 5 — Broadcasting to Monad and saving metadata…");
+      setMintStatus("Step 5 / 5 — Saving metadata…");
       const proof = {
         mode: "ika-mpc" as const,
         suiObjectId: mint.objectId,
         monadAddress: targetMonadAddress,
-        message: "Ika MPC signed the Monad mintPass transaction.",
-        signature: monadMint.signature,
+        message: "Coordinator created the Ika presign and signed the Monad mintPass transaction.",
+        signature: coordinator.signature,
         signer: "ika-dwallet" as const,
-        proofHash,
+        proofHash: coordinator.proofHash,
         timestamp: Date.now(),
-        claimDigest: monadMint.hash,
-        monadMintTxHash: monadMint.hash,
-        monadUnsignedTxHash: signRequest.unsignedTransactionHash,
+        claimDigest: coordinator.monadMintTxHash,
+        monadMintTxHash: coordinator.monadMintTxHash,
+        monadUnsignedTxHash: coordinator.monadUnsignedTxHash,
         status: "claimed" as const,
       };
 
@@ -290,7 +208,6 @@ export function NFTMintCard() {
       };
       saveStoredMint(storedMint);
       setLastMint(storedMint);
-      setMintedCount((value) => value + 1);
       setMintStatus(undefined);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Mint failed. Check wallet status and chain configuration.";

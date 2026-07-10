@@ -181,6 +181,7 @@ export async function POST(request: Request) {
       ikaClient,
     });
     presign.transaction.setSender(coordinatorAddress);
+    presign.transaction.transferObjects([presign.unverifiedPresignCap], coordinatorAddress);
 
     const presignResult = await suiClient.signAndExecuteTransaction({
       signer: coordinatorKeypair,

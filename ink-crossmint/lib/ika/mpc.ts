@@ -112,10 +112,11 @@ export async function buildIkaDWalletDkgTransaction(input: {
 export async function buildIkaPresignTransaction(input: {
   suiClient: unknown;
   dWalletId: string;
+  ikaClient?: Awaited<ReturnType<typeof createIkaClient>>;
 }) {
   const { ikaCoinObjectId, suiFeeMist } = requireIkaFeeObjects();
   const sdk = await loadIkaSdk();
-  const ikaClient = await createIkaClient(input.suiClient);
+  const ikaClient = input.ikaClient ?? await createIkaClient(input.suiClient);
   const dWallet = await ikaClient.getDWallet(input.dWalletId);
   const tx = new Transaction();
   const ikaTx = new sdk.IkaTransaction({
@@ -148,10 +149,11 @@ export async function buildIkaMonadMintPassSignTransaction(input: {
   unverifiedPresignCapId: string;
   userSecretKeyShare?: Hex;
   userPublicOutput?: Hex;
+  ikaClient?: Awaited<ReturnType<typeof createIkaClient>>;
 }) {
   const { ikaCoinObjectId, suiFeeMist } = requireIkaFeeObjects();
   const sdk = await loadIkaSdk();
-  const ikaClient = await createIkaClient(input.suiClient);
+  const ikaClient = input.ikaClient ?? await createIkaClient(input.suiClient);
   const [dWallet, presign] = await Promise.all([
     ikaClient.getDWallet(input.dWalletId),
     ikaClient.getPresignInParticularState(input.presignId, "Completed", {
@@ -229,9 +231,10 @@ export async function submitCompletedIkaMintPassSignature(input: {
   suiClient: unknown;
   signId: string;
   monadTransaction: MonadMintPassTransaction;
+  ikaClient?: Awaited<ReturnType<typeof createIkaClient>>;
 }) {
   const sdk = await loadIkaSdk();
-  const ikaClient = await createIkaClient(input.suiClient);
+  const ikaClient = input.ikaClient ?? await createIkaClient(input.suiClient);
   const sign = await ikaClient.getSignInParticularState(
     input.signId,
     sdk.Curve.SECP256K1,

@@ -12,7 +12,7 @@ import type { StoredMint } from "@/lib/storage/localStore";
 import { loadInkUsername, loadTelegramJoined, saveInkUsername, saveStoredMint, saveTelegramJoined } from "@/lib/storage/localStore";
 import { buildInkPassMetadata } from "@/lib/metadata/buildMetadata";
 import { uploadMetadata } from "@/lib/metadata/uploadMetadata";
-import { buildIkaMonadMintPassSignTransaction, buildIkaPresignTransaction, submitCompletedIkaMintPassSignature } from "@/lib/ika/mpc";
+import { buildIkaMonadMintPassSignTransaction, buildIkaPresignTransaction, createIkaClient, submitCompletedIkaMintPassSignature } from "@/lib/ika/mpc";
 import { getMonadAddressHash } from "@/lib/monad/proof";
 import { Button, Panel, Stat, buttonClassName } from "./ui";
 import { MintSuccessModal } from "./MintSuccessModal";
@@ -157,11 +157,17 @@ export function NFTMintCard() {
       const mintNumber = mint.mintNumber ?? nextMintNumber;
       const ikaSigner = requireIkaMintSigner();
 
+      // Initialise the Ika client once and reuse it — initialize() makes a
+      // network round-trip to Ika infrastructure, so we do it a single time.
+      setMintStatus("Step 2 / 5 — Connecting to Ika network…");
+      const ikaClient = await createIkaClient(suiClient);
+
       // Step 2 — Presign (single-use Sui object, always created fresh per mint)
       setMintStatus("Step 2 / 5 — Approve the Ika presign transaction in your wallet…");
       const presign = await buildIkaPresignTransaction({
         suiClient,
         dWalletId: ikaSigner.dWalletId,
+        ikaClient,
       });
       const presignResult = await signAndExecuteTransaction({ transaction: presign.transaction });
       const presignId = findCreatedObjectId(presignResult, "PresignSession") ?? "";
@@ -194,6 +200,7 @@ export function NFTMintCard() {
         proofHash,
         presignId,
         unverifiedPresignCapId,
+        ikaClient,
       });
 
       // Step 4 — Sign transaction (wallet approval + Ika network sign, up to ~90 s)
@@ -209,6 +216,7 @@ export function NFTMintCard() {
       const monadMint = await submitCompletedIkaMintPassSignature({
         suiClient,
         signId,
+        ikaClient,
         monadTransaction: signRequest.monadTransaction,
       });
 

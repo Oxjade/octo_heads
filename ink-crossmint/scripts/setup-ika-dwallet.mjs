@@ -11,7 +11,7 @@
  * Output: dWallet ID, Cap ID, and EVM address to add to .env
  */
 
-import { SuiClient, getFullnodeUrl } from "@mysten/sui/client";
+import { SuiJsonRpcClient, getJsonRpcFullnodeUrl } from "@mysten/sui/jsonRpc";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 import * as fs from "fs";
@@ -54,8 +54,8 @@ async function main() {
     console.log(`💰 IKA Coin: ${ikaCoinObjectId}\n`);
 
     // Initialize Sui client
-    const rpcUrl = getFullnodeUrl(suiNetwork);
-    const suiClient = new SuiClient({ url: rpcUrl });
+    const rpcUrl = env.NEXT_PUBLIC_SUI_RPC_URL || env.SUI_RPC_URL || getJsonRpcFullnodeUrl(suiNetwork);
+    const suiClient = new SuiJsonRpcClient({ url: rpcUrl, network: suiNetwork });
 
     // Load SDK
     const sdk = await import("@ika.xyz/sdk");

@@ -7,8 +7,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { suiNetwork, suiRpcUrl } from "@/config/chains";
 
+const activeSuiNetwork = suiNetwork === "localnet" ? "testnet" : suiNetwork;
 const { networkConfig } = createNetworkConfig({
-  [suiNetwork === "localnet" ? "testnet" : suiNetwork]: { url: suiRpcUrl },
+  [activeSuiNetwork]: { url: suiRpcUrl, network: activeSuiNetwork },
 });
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -16,7 +17,7 @@ export function Providers({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <SuiClientProvider networks={networkConfig} defaultNetwork={suiNetwork === "localnet" ? "testnet" : suiNetwork}>
+      <SuiClientProvider networks={networkConfig} defaultNetwork={activeSuiNetwork}>
         <WalletProvider autoConnect>{children}</WalletProvider>
       </SuiClientProvider>
     </QueryClientProvider>

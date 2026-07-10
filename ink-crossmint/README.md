@@ -97,8 +97,6 @@ IKA_GAS_COIN_ID=
 IKA_DWALLET_ID=
 IKA_DWALLET_CAP_ID=
 IKA_ETH_ADDRESS=
-IKA_PRESIGN_ID=
-IKA_UNVERIFIED_PRESIGN_CAP_ID=
 IKA_USER_SHARE_ENCRYPTION_KEYS_B64=
 ```
 
@@ -116,7 +114,7 @@ After funding the Sui/Ika account and setting the required Ika env values:
 npm run ink:dwallet
 ```
 
-This uses Ink SDK with `IkaEvmSigningConnector` and writes the generated dWallet, EVM address, presign, and cap IDs into `.env.local`.
+This uses Ink SDK with `IkaEvmSigningConnector` and writes the generated dWallet and EVM address into `.env.local`. Presigns are created fresh during each mint and should not be stored in Vercel env.
 
 ## Deploy
 

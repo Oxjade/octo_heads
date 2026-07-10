@@ -37,7 +37,7 @@ export async function createIkaClient(suiClient: unknown) {
     encryptionKeyOptions: { autoDetect: true },
   });
 
-  await ikaClient.initialize();
+  await retryIkaNetworkRead(() => ikaClient.initialize(), "initialize Ika client");
   return ikaClient;
 }
 
@@ -117,7 +117,7 @@ export async function buildIkaPresignTransaction(input: {
   const { ikaCoinObjectId, suiFeeMist } = requireIkaFeeObjects();
   const sdk = await loadIkaSdk();
   const ikaClient = input.ikaClient ?? await createIkaClient(input.suiClient);
-  const dWallet = await ikaClient.getDWallet(input.dWalletId);
+  const dWallet = await retryIkaNetworkRead(() => ikaClient.getDWallet(input.dWalletId), "load Ika dWallet");
   const tx = new Transaction();
   const ikaTx = new sdk.IkaTransaction({
     ikaClient,
@@ -155,10 +155,10 @@ export async function buildIkaMonadMintPassSignTransaction(input: {
   const sdk = await loadIkaSdk();
   const ikaClient = input.ikaClient ?? await createIkaClient(input.suiClient);
   const [dWallet, presign] = await Promise.all([
-    ikaClient.getDWallet(input.dWalletId),
-    ikaClient.getPresignInParticularState(input.presignId, "Completed", {
+    retryIkaNetworkRead(() => ikaClient.getDWallet(input.dWalletId), "load Ika dWallet"),
+    retryIkaNetworkRead(() => ikaClient.getPresignInParticularState(input.presignId, "Completed", {
       timeout: ikaRuntimeConfig.signTimeoutMs,
-    }),
+    }), "wait for Ika presign completion"),
   ]);
   const preparedMonad = await prepareMonadMintPassTransaction({
     ikaDWalletAddress: input.ikaDWalletAddress,
@@ -235,12 +235,16 @@ export async function submitCompletedIkaMintPassSignature(input: {
 }) {
   const sdk = await loadIkaSdk();
   const ikaClient = input.ikaClient ?? await createIkaClient(input.suiClient);
-  const sign = await ikaClient.getSignInParticularState(
-    input.signId,
-    sdk.Curve.SECP256K1,
-    sdk.SignatureAlgorithm.ECDSASecp256k1,
-    "Completed",
-    { timeout: ikaRuntimeConfig.signTimeoutMs },
+  const sign = await retryIkaNetworkRead(
+    () =>
+      ikaClient.getSignInParticularState(
+        input.signId,
+        sdk.Curve.SECP256K1,
+        sdk.SignatureAlgorithm.ECDSASecp256k1,
+        "Completed",
+        { timeout: ikaRuntimeConfig.signTimeoutMs },
+      ),
+    "wait for Ika sign completion",
   );
   const signature = new Uint8Array(sign.state.Completed.signature);
   const rawTransaction = await buildSignedMonadMintPassRawTransaction({
@@ -275,4 +279,43 @@ async function createUserShareEncryptionKeys(sdk: IkaSdk, rootSeed?: Hex) {
 function randomHex32() {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   return keccak256(bytes);
+}
+
+async function retryIkaNetworkRead<T>(operation: () => Promise<T>, label: string) {
+  const maxAttempts = 3;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+
+      if (attempt === maxAttempts || !isTransientIkaNetworkError(error)) {
+        throw enrichIkaNetworkError(error, label);
+      }
+
+      await sleep(750 * attempt);
+    }
+  }
+
+  throw enrichIkaNetworkError(lastError, label);
+}
+
+function isTransientIkaNetworkError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const cause = error instanceof Error && error.cause instanceof Error ? error.cause.message : "";
+
+  return /network error|failed to fetch|fetch failed|timeout|etimedout/i.test(`${message} ${cause}`);
+}
+
+function enrichIkaNetworkError(error: unknown, label: string) {
+  if (!isTransientIkaNetworkError(error)) return error;
+
+  const message = error instanceof Error ? error.message : String(error);
+  return new Error(`Ika network request failed while trying to ${label}. Check the configured Sui RPC endpoint and retry. Last error: ${message}`);
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

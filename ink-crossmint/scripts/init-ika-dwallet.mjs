@@ -7,7 +7,7 @@
  * Usage: node scripts/init-ika-dwallet.mjs
  */
 
-import { SuiClient, getFullnodeUrl } from "@mysten/sui/client";
+import { SuiJsonRpcClient, getJsonRpcFullnodeUrl } from "@mysten/sui/jsonRpc";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -51,8 +51,8 @@ async function main() {
     console.log(`📡 Network: ${suiNetwork} (Ika: ${ikaNetwork})`);
     console.log(`💰 IKA Coin: ${ikaCoinObjectId}\n`);
 
-    const rpcUrl = getFullnodeUrl(suiNetwork);
-    const suiClient = new SuiClient({ url: rpcUrl });
+    const rpcUrl = env.NEXT_PUBLIC_SUI_RPC_URL || env.SUI_RPC_URL || getJsonRpcFullnodeUrl(suiNetwork);
+    const suiClient = new SuiJsonRpcClient({ url: rpcUrl, network: suiNetwork });
 
     // Load SDK
     const sdk = await import("@ika.xyz/sdk");

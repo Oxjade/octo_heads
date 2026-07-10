@@ -13,10 +13,13 @@
  * Usage: node scripts/test-mint-flow.mjs
  */
 
-import { SuiClient, getFullnodeUrl } from "@mysten/sui/client";
+import { SuiJsonRpcClient, getJsonRpcFullnodeUrl } from "@mysten/sui/jsonRpc";
 import { getNetworkConfig } from "@ika.xyz/sdk";
+import * as dns from "dns";
 import * as fs from "fs";
 import * as path from "path";
+
+dns.setDefaultResultOrder?.("ipv4first");
 
 function loadEnv() {
   const envPath = path.join(process.cwd(), ".env.local");
@@ -73,14 +76,18 @@ async function main() {
     // Test Sui connectivity
     console.log("🔌 Testing Sui connectivity...");
     const suiNetwork = env.NEXT_PUBLIC_SUI_NETWORK;
-    const suiRpcUrl = getFullnodeUrl(
+    const defaultSuiRpcUrl = getJsonRpcFullnodeUrl(
       suiNetwork === "mainnet" ? "mainnet" : suiNetwork === "devnet" ? "devnet" : "testnet"
     );
-    const suiClient = new SuiClient({ url: suiRpcUrl });
+    const suiRpcUrl = env.NEXT_PUBLIC_SUI_RPC_URL || env.SUI_RPC_URL || defaultSuiRpcUrl;
+    const suiClient = new SuiJsonRpcClient({
+      url: suiRpcUrl,
+      network: suiNetwork === "mainnet" ? "mainnet" : suiNetwork === "devnet" ? "devnet" : "testnet",
+    });
 
     try {
-      const status = await suiClient.getRpcApiVersion();
-      console.log(`✅ Sui testnet connected (API: ${status})\n`);
+      const status = await retryNetworkRead(() => suiClient.getRpcApiVersion());
+      console.log(`✅ Sui ${suiNetwork} connected (API: ${status})\n`);
     } catch (e) {
       console.error(`❌ Sui connection failed: ${e.message}\n`);
       process.exit(1);
@@ -97,7 +104,7 @@ async function main() {
         cache: true,
         encryptionKeyOptions: { autoDetect: true },
       });
-      await ikaClient.initialize();
+      await retryNetworkRead(() => ikaClient.initialize());
       console.log(`✅ Ika SDK initialized\n`);
     } catch (e) {
       console.error(`❌ Ika SDK failed: ${e.message}\n`);
@@ -119,7 +126,7 @@ async function main() {
       });
       const data = await response.json();
       const chainId = parseInt(data.result, 16);
-      console.log(`✅ Monad testnet connected (Chain ID: ${chainId})\n`);
+      console.log(`✅ Monad connected (Chain ID: ${chainId})\n`);
 
       if (chainId !== Number(env.NEXT_PUBLIC_MONAD_CHAIN_ID)) {
         console.error(`❌ Chain ID mismatch. Expected ${env.NEXT_PUBLIC_MONAD_CHAIN_ID}, got ${chainId}\n`);
@@ -137,16 +144,16 @@ async function main() {
     console.log("   3. Connect wallet (nostalgic-carnelian)");
     console.log("   4. Click 'Mint NFT'");
     console.log("\n   Flow:");
-    console.log(`   ✓ Pay ${env.NEXT_PUBLIC_MINT_PRICE ?? "0.1"} SUI on Sui testnet`);
+    console.log(`   ✓ Pay ${env.NEXT_PUBLIC_MINT_PRICE ?? "0.1"} SUI on Sui ${env.NEXT_PUBLIC_SUI_NETWORK}`);
     console.log("   ✓ Request Ika MPC signature");
-    console.log("   ✓ Submit to Monad testnet");
+    console.log("   ✓ Submit to Monad");
     console.log("   ✓ NFT minted to dWallet EVM address\n");
 
     console.log("📊 Useful links:");
     console.log(`   - App: http://localhost:3001/mint`);
-    console.log(`   - Sui Explorer: https://testnet.suivision.xyz/address/${env.NEXT_PUBLIC_SUI_PACKAGE_ID}`);
-    console.log(`   - Monad Explorer: https://testnet-explorer.monad.xyz/address/${env.NEXT_PUBLIC_MONAD_RECEIPT_CONTRACT}`);
-    console.log(`   - Ika Dashboard: https://testnet.ika.xyz/dashboard\n`);
+    console.log(`   - Sui package: ${env.NEXT_PUBLIC_SUI_PACKAGE_ID}`);
+    console.log(`   - Monad contract: ${env.NEXT_PUBLIC_MONAD_RECEIPT_CONTRACT}`);
+    console.log(`   - Ika network: ${env.NEXT_PUBLIC_IKA_NETWORK}\n`);
 
   } catch (error) {
     console.error("❌ Error:", error.message);
@@ -155,3 +162,23 @@ async function main() {
 }
 
 main();
+
+async function retryNetworkRead(operation) {
+  let lastError;
+
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      const cause = error instanceof Error && error.cause instanceof Error ? error.cause.message : "";
+      if (!/network error|failed to fetch|fetch failed|timeout|etimedout/i.test(`${message} ${cause}`) || attempt === 4) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 750 * attempt));
+    }
+  }
+
+  throw lastError;
+}

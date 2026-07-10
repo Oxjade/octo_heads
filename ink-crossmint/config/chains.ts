@@ -1,4 +1,4 @@
-import { getFullnodeUrl, type SuiClient } from "@mysten/sui/client";
+import { getJsonRpcFullnodeUrl, type SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 
 export type SuiNetwork = "mainnet" | "testnet" | "devnet" | "localnet";
 export type MonadProofMode = "signature" | "contract";
@@ -10,7 +10,7 @@ export const suiRpcUrl =
   process.env.SUI_RPC_URL ||
   (suiNetwork === "localnet"
     ? "http://127.0.0.1:9000"
-    : getFullnodeUrl(suiNetwork === "mainnet" ? "mainnet" : suiNetwork === "devnet" ? "devnet" : "testnet"));
+    : getJsonRpcFullnodeUrl(suiNetwork === "mainnet" ? "mainnet" : suiNetwork === "devnet" ? "devnet" : "testnet"));
 
 export const suiGraphqlUrl = process.env.NEXT_PUBLIC_SUI_GRAPHQL_URL ?? process.env.SUI_GRAPHQL_URL ?? "";
 
@@ -22,4 +22,4 @@ export const monadConfig = {
   receiptContractAddress: process.env.NEXT_PUBLIC_MONAD_RECEIPT_CONTRACT ?? "",
 };
 
-export type SuiClientLike = Pick<SuiClient, "getObject" | "queryEvents">;
+export type SuiClientLike = Pick<SuiJsonRpcClient, "getObject" | "queryEvents">;

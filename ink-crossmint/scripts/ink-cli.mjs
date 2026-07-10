@@ -208,8 +208,6 @@ function walletToUpdates(wallet, env) {
     NEXT_PUBLIC_IKA_DWALLET_ID: wallet.id,
     NEXT_PUBLIC_IKA_DWALLET_CAP_ID: dWalletCapId,
     NEXT_PUBLIC_IKA_DWALLET_EVM_ADDRESS: evmAddress,
-    NEXT_PUBLIC_IKA_PRESIGN_ID: presignId,
-    NEXT_PUBLIC_IKA_UNVERIFIED_PRESIGN_CAP_ID: unverifiedPresignCapId,
   };
 }
 

@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as dns from "dns";
 import { fileURLToPath, pathToFileURL } from "url";
-import { SuiClient } from "@mysten/sui/client";
+import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { Transaction } from "@mysten/sui/transactions";
 import { normalizeSuiAddress } from "@mysten/sui/utils";
 import { decodeSuiPrivateKey } from "@mysten/sui/cryptography";
@@ -260,8 +260,6 @@ async function createFreshPresign(env, keypair) {
   writeEnvUpdates(envPath, {
     IKA_PRESIGN_ID: presignId,
     IKA_UNVERIFIED_PRESIGN_CAP_ID: unverifiedPresignCapId,
-    NEXT_PUBLIC_IKA_PRESIGN_ID: presignId,
-    NEXT_PUBLIC_IKA_UNVERIFIED_PRESIGN_CAP_ID: unverifiedPresignCapId,
   });
 
   return { presignId, unverifiedPresignCapId };
@@ -335,7 +333,10 @@ async function main() {
   const suiAddress = keypair.getPublicKey().toSuiAddress();
   const monadRecipient = getAddress(env.IKA_ETH_ADDRESS);
   const monadAddressHash = getMonadAddressHash(monadRecipient);
-  const suiClient = new SuiClient({ url: env.IKA_SUI_RPC || DEFAULT_SUI_RPC });
+  const suiClient = new SuiJsonRpcClient({
+    url: env.IKA_SUI_RPC || DEFAULT_SUI_RPC,
+    network: env.IKA_NETWORK ?? env.NEXT_PUBLIC_IKA_NETWORK ?? "testnet",
+  });
 
   console.log(`Sui payer: ${suiAddress}`);
   console.log(`Monad recipient: ${monadRecipient}`);

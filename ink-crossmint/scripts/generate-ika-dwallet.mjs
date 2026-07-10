@@ -5,7 +5,7 @@
  * Creates DKG ceremony and extracts dWallet credentials
  */
 
-import { SuiClient, getFullnodeUrl } from "@mysten/sui/client";
+import { SuiJsonRpcClient, getJsonRpcFullnodeUrl } from "@mysten/sui/jsonRpc";
 import { Transaction } from "@mysten/sui/transactions";
 import * as fs from "fs";
 import * as path from "path";
@@ -84,8 +84,8 @@ async function generateIkaAddress() {
 
     // 1. Initialize the Ika Network Client
     console.log("🔌 Initializing Ika Client...");
-    const rpcUrl = getFullnodeUrl(suiNetwork);
-    const suiClient = new SuiClient({ url: rpcUrl });
+    const rpcUrl = env.NEXT_PUBLIC_SUI_RPC_URL || env.SUI_RPC_URL || getJsonRpcFullnodeUrl(suiNetwork);
+    const suiClient = new SuiJsonRpcClient({ url: rpcUrl, network: suiNetwork });
 
     const sdk = await import("@ika.xyz/sdk");
     const ikaConfig = sdk.getNetworkConfig(ikaNetwork);

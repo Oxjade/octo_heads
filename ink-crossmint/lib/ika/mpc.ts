@@ -1,4 +1,4 @@
-import { Transaction, type TransactionObjectArgument } from "@mysten/sui/transactions";
+import { Transaction } from "@mysten/sui/transactions";
 import { bytesToHex, hexToBytes, keccak256, type Hex } from "viem";
 import { ikaRuntimeConfig, requireIkaFeeObjects } from "@/config/ika";
 import {
@@ -29,7 +29,6 @@ export type IkaMpcSignRequest = {
 };
 
 type IkaClient = Awaited<ReturnType<typeof createIkaClient>>;
-type PresignMoveCallResult = [TransactionObjectArgument, TransactionObjectArgument];
 
 export async function createIkaClient(suiClient: unknown) {
   const sdk = await loadIkaSdk();
@@ -127,22 +126,15 @@ export async function buildIkaPresignTransaction(input: {
     transaction: tx as never,
   });
   const suiCoin = tx.splitCoins(tx.gas, [tx.pure.u64(suiFeeMist)]);
-  const presignResult = ikaTx.requestPresign({
+  const unverifiedPresignCap = ikaTx.requestPresign({
     dWallet,
     signatureAlgorithm: sdk.SignatureAlgorithm.ECDSASecp256k1,
     ikaCoin: tx.object(ikaCoinObjectId),
     suiCoin,
-  }) as unknown as PresignMoveCallResult;
-  const presignSession = presignResult[0];
-  const unverifiedPresignCap = presignResult[1];
-
-  if (!presignSession || !unverifiedPresignCap) {
-    throw new Error("Ika presign transaction did not return the expected PresignSession and UnverifiedPresignCap objects.");
-  }
+  });
 
   return {
     transaction: tx,
-    presignSession,
     unverifiedPresignCap,
   };
 }

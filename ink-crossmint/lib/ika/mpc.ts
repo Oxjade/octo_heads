@@ -90,7 +90,7 @@ export async function buildIkaDWalletDkgTransaction(input: {
     hexToBytes(sessionIdentifier),
     input.senderAddress,
   );
-  const suiCoin = tx.splitCoins(tx.gas, [tx.pure.u64(suiFeeMist)]);
+  const [suiCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(suiFeeMist)]);
 
   await ikaTx.requestDWalletDKG({
     dkgRequestInput,
@@ -125,7 +125,7 @@ export async function buildIkaPresignTransaction(input: {
     ikaClient,
     transaction: tx as never,
   });
-  const suiCoin = tx.splitCoins(tx.gas, [tx.pure.u64(suiFeeMist)]);
+  const [suiCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(suiFeeMist)]);
   const unverifiedPresignCap = ikaTx.requestPresign({
     dWallet,
     signatureAlgorithm: sdk.SignatureAlgorithm.ECDSASecp256k1,
@@ -193,7 +193,7 @@ export async function buildIkaMonadMintPassSignTransaction(input: {
   const verifiedPresignCap = ikaTx.verifyPresignCap({
     unverifiedPresignCap: input.unverifiedPresignCapId,
   });
-  const suiCoin = tx.splitCoins(tx.gas, [tx.pure.u64(suiFeeMist)]);
+  const [suiCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(suiFeeMist)]);
   const signInput = {
     dWallet,
     hashScheme: sdk.Hash.KECCAK256,

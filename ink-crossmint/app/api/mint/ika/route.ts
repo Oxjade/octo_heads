@@ -340,6 +340,11 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Coordinator mint failed.";
+    console.error("Ika coordinator mint failed", {
+      phase,
+      message,
+      error,
+    });
     return NextResponse.json({ error: `${phase}: ${message}` }, { status: 400 });
   }
 }

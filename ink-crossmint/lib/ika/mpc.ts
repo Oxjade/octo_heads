@@ -100,6 +100,7 @@ export async function buildIkaDWalletDkgTransaction(input: {
     ikaCoin: tx.object(ikaCoinObjectId),
     suiCoin,
   });
+  tx.mergeCoins(tx.gas, [suiCoin]);
 
   return {
     transaction: tx,
@@ -126,12 +127,17 @@ export async function buildIkaPresignTransaction(input: {
     transaction: tx as never,
   });
   const [suiCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(suiFeeMist)]);
-  const unverifiedPresignCap = ikaTx.requestPresign({
-    dWallet,
+  const unverifiedPresignCap = ikaTx.requestGlobalPresign({
+    dwalletNetworkEncryptionKeyId: dWallet.dwallet_network_encryption_key_id,
+    curve: sdk.Curve.SECP256K1,
     signatureAlgorithm: sdk.SignatureAlgorithm.ECDSASecp256k1,
     ikaCoin: tx.object(ikaCoinObjectId),
     suiCoin,
   });
+  // Ika only borrows the fee coin, so consume the remaining split coin by
+  // merging it back into gas. Otherwise Sui rejects the PTB as an unused
+  // non-droppable value before the presign request is executed.
+  tx.mergeCoins(tx.gas, [suiCoin]);
 
   return {
     transaction: tx,
@@ -219,6 +225,7 @@ export async function buildIkaMonadMintPassSignTransaction(input: {
     signInput,
     isImportedKeyDWallet,
   });
+  tx.mergeCoins(tx.gas, [suiCoin]);
 
   return {
     transaction: tx,

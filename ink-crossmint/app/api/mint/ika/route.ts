@@ -304,6 +304,8 @@ export async function POST(request: Request) {
       proofHash,
       presignId,
       unverifiedPresignCapId,
+      encryptedUserSecretKeyShareId: ikaSigner.encryptedUserSecretKeyShareId,
+      userShareEncryptionKeysBase64: ikaSigner.userShareEncryptionKeysBase64,
       ikaClient,
     });
     signRequest.transaction.setSender(coordinatorAddress);

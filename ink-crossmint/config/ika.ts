@@ -10,6 +10,8 @@ export const ikaRuntimeConfig = {
   dWalletId: process.env.IKA_DWALLET_ID ?? process.env.NEXT_PUBLIC_IKA_DWALLET_ID ?? "",
   dWalletCapId: process.env.IKA_DWALLET_CAP_ID ?? process.env.NEXT_PUBLIC_IKA_DWALLET_CAP_ID ?? "",
   dWalletEvmAddress: process.env.IKA_ETH_ADDRESS ?? process.env.NEXT_PUBLIC_IKA_DWALLET_EVM_ADDRESS ?? "",
+  encryptedUserSecretKeyShareId: process.env.IKA_ENCRYPTED_USER_SECRET_KEY_SHARE_ID ?? "",
+  userShareEncryptionKeysBase64: process.env.IKA_USER_SHARE_ENCRYPTION_KEYS_B64 ?? "",
 };
 
 export function requireIkaFeeObjects() {
@@ -26,9 +28,15 @@ export function requireIkaFeeObjects() {
 export function requireIkaMintSigner() {
   requireIkaFeeObjects();
 
-  if (!ikaRuntimeConfig.dWalletId || !ikaRuntimeConfig.dWalletCapId || !ikaRuntimeConfig.dWalletEvmAddress) {
+  if (
+    !ikaRuntimeConfig.dWalletId ||
+    !ikaRuntimeConfig.dWalletCapId ||
+    !ikaRuntimeConfig.dWalletEvmAddress ||
+    !ikaRuntimeConfig.encryptedUserSecretKeyShareId ||
+    !ikaRuntimeConfig.userShareEncryptionKeysBase64
+  ) {
     throw new Error(
-      "Configure NEXT_PUBLIC_IKA_DWALLET_ID, NEXT_PUBLIC_IKA_DWALLET_CAP_ID, and NEXT_PUBLIC_IKA_DWALLET_EVM_ADDRESS before minting on Monad.",
+      "Configure the Ika dWallet, capability, EVM address, encrypted user share, and user share encryption keys before minting on Monad.",
     );
   }
 
@@ -36,5 +44,7 @@ export function requireIkaMintSigner() {
     dWalletId: ikaRuntimeConfig.dWalletId,
     dWalletCapId: ikaRuntimeConfig.dWalletCapId,
     dWalletEvmAddress: ikaRuntimeConfig.dWalletEvmAddress as `0x${string}`,
+    encryptedUserSecretKeyShareId: ikaRuntimeConfig.encryptedUserSecretKeyShareId,
+    userShareEncryptionKeysBase64: ikaRuntimeConfig.userShareEncryptionKeysBase64,
   };
 }

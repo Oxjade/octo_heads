@@ -155,6 +155,8 @@ export async function buildIkaMonadMintPassSignTransaction(input: {
   proofHash: Hex;
   presignId: string;
   unverifiedPresignCapId: string;
+  encryptedUserSecretKeyShareId?: string;
+  userShareEncryptionKeysBase64?: string;
   userSecretKeyShare?: Hex;
   userPublicOutput?: Hex;
   ikaClient?: IkaClient;
@@ -162,12 +164,33 @@ export async function buildIkaMonadMintPassSignTransaction(input: {
   const { ikaCoinObjectId, suiFeeMist } = requireIkaFeeObjects();
   const sdk = await loadIkaSdk();
   const ikaClient = input.ikaClient ?? await createIkaClient(input.suiClient);
-  const [dWallet, presign] = await Promise.all([
+  const [dWallet, presign, encryptedUserSecretKeyShare] = await Promise.all([
     retryIkaNetworkRead(() => ikaClient.getDWallet(input.dWalletId), "load Ika dWallet"),
     retryIkaNetworkRead(() => ikaClient.getPresignInParticularState(input.presignId, "Completed", {
       timeout: ikaRuntimeConfig.signTimeoutMs,
     }), "wait for Ika presign completion"),
+    input.encryptedUserSecretKeyShareId
+      ? retryIkaNetworkRead(
+          () => ikaClient.getEncryptedUserSecretKeyShare(input.encryptedUserSecretKeyShareId!),
+          "load encrypted Ika user share",
+        )
+      : undefined,
   ]);
+  let secretShare = input.userSecretKeyShare ? hexToBytes(input.userSecretKeyShare) : undefined;
+  let publicOutput = input.userPublicOutput ? hexToBytes(input.userPublicOutput) : undefined;
+
+  if (!secretShare && encryptedUserSecretKeyShare && input.userShareEncryptionKeysBase64) {
+    const userShareEncryptionKeys = sdk.UserShareEncryptionKeys.fromShareEncryptionKeysBytes(
+      Uint8Array.from(Buffer.from(input.userShareEncryptionKeysBase64, "base64")),
+    );
+    const decryptedShare = await userShareEncryptionKeys.decryptUserShare(
+      dWallet,
+      encryptedUserSecretKeyShare,
+      await ikaClient.getProtocolPublicParameters(dWallet),
+    );
+    secretShare = decryptedShare.secretShare;
+    publicOutput = decryptedShare.verifiedPublicOutput;
+  }
   const preparedMonad = await prepareMonadMintPassTransaction({
     ikaDWalletAddress: input.ikaDWalletAddress,
     monadRecipient: input.monadRecipient,
@@ -205,8 +228,8 @@ export async function buildIkaMonadMintPassSignTransaction(input: {
     hashScheme: sdk.Hash.KECCAK256,
     verifiedPresignCap,
     presign,
-    secretShare: input.userSecretKeyShare ? hexToBytes(input.userSecretKeyShare) : undefined,
-    publicOutput: input.userPublicOutput ? hexToBytes(input.userPublicOutput) : undefined,
+    secretShare,
+    publicOutput,
     message,
     signatureScheme: sdk.SignatureAlgorithm.ECDSASecp256k1,
     ikaCoin: tx.object(ikaCoinObjectId),
@@ -222,6 +245,8 @@ export async function buildIkaMonadMintPassSignTransaction(input: {
     verifiedPresignCap,
     messageApproval,
     message,
+    secretShare,
+    publicOutput,
     signInput,
     isImportedKeyDWallet,
   });
@@ -298,24 +323,26 @@ async function requestIkaSignWithoutReturnedId(input: {
   verifiedPresignCap: unknown;
   messageApproval: unknown;
   message: Uint8Array;
+  secretShare?: Uint8Array;
+  publicOutput?: Uint8Array;
   signInput: {
     ikaCoin: unknown;
     suiCoin: unknown;
   };
   isImportedKeyDWallet: boolean;
 }) {
-  const publicUserSecretKeyShare = input.dWallet.public_user_secret_key_share;
-  const publicOutput = input.dWallet.state.Active?.public_output;
+  const secretShare = input.secretShare ?? input.dWallet.public_user_secret_key_share;
+  const publicOutput = input.publicOutput ?? input.dWallet.state.Active?.public_output;
   const presignBytes = input.presign.state.Completed?.presign;
 
-  if (!publicUserSecretKeyShare || !publicOutput || !presignBytes) {
-    throw new Error("Ika dWallet sign requires public key shares, active public output, and a completed presign.");
+  if (!secretShare || !publicOutput || !presignBytes) {
+    throw new Error("Ika dWallet sign requires a decrypted or public user share, active public output, and a completed presign.");
   }
 
   const userSignMessage = await input.sdk.createUserSignMessageWithPublicOutput(
     await input.ikaClient.getProtocolPublicParameters(input.dWallet),
     Uint8Array.from(publicOutput),
-    Uint8Array.from(publicUserSecretKeyShare),
+    Uint8Array.from(secretShare),
     Uint8Array.from(presignBytes),
     input.message,
     input.sdk.Hash.KECCAK256,
